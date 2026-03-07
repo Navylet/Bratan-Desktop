@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        platform: [windows, macos, linux]
+        platform: [windows, linux]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,8 +57,6 @@ jobs:
         run: |
           if [ "${{ matrix.platform }}" = "windows" ]; then
             npm run dist:win
-          elif [ "${{ matrix.platform }}" = "macos" ]; then
-            npm run dist:mac
           else
             npm run dist:linux
           fi
@@ -85,7 +83,7 @@ jobs:
         run: |
           mkdir -p release-assets
           # Flatten artifacts into release-assets/
-          find artifacts -type f -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.pkg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" | while read f; do
+          find artifacts -type f -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" | while read f; do
             cp "$f" release-assets/
           done
           # Generate checksums
