@@ -10,7 +10,7 @@
     "build:mac": "electron-builder --mac",
     "build:linux": "electron-builder --linux",
     "dist": "electron-builder --publish never",
-    "dist:win": "electron-builder --win --publish never",
+    "dist:win": "npx electron-builder --win --publish never",
     "dist:linux": "electron-builder --linux --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "postinstall": "electron-builder install-app-deps",
