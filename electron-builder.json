@@ -29,8 +29,7 @@
   ],
   "win": {
     "target": "portable",
-    "icon": "build/icon.ico",
-    "publisherName": "OpenClaw Team"
+    "icon": "build/icon.ico"
   },
   "nsis": false,
   "msi": false,
