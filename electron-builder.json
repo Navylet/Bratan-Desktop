@@ -1,7 +1,6 @@
 {
   "appId": "openclaw.desktop",
   "productName": "OpenClaw Desktop",
-  "main": "dist-electron/main.js",
   "directories": {
     "output": "dist"
   },
