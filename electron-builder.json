@@ -1,6 +1,7 @@
 {
   "appId": "openclaw.desktop",
   "productName": "OpenClaw Desktop",
+  "main": "dist-electron/main.js",
   "directories": {
     "output": "dist"
   },
@@ -8,7 +9,7 @@
     "build/**/*",
     "node_modules/**/*",
     "package.json",
-    "src/**/*",
+    "dist-electron/**/*",
     "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
     "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
     "!**/node_modules/*.d.ts",
