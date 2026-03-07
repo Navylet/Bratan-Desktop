@@ -2,117 +2,101 @@ name: Build and Release
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
-env:
-  # Version for release tagging
-  APP_VERSION: ${{ github.ref == 'refs/heads/main' && 'nightly' || github.ref_name }}
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        platform: [windows, linux]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: 22
 
-      - name: Install dependencies
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev librsvg2-dev
+
+      - name: Install npm dependencies
         run: npm ci
 
-      - name: Install Linux dependencies (Linux runner)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fakeroot rpm
+      - name: Build Linux
+        run: npm run dist:linux
 
-      - name: Install Wine (for Windows cross‑build)
-        if: matrix.platform == 'windows'
+      - name: Prepare artifacts directory
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y wine64 wine32
-
-      - name: Build for ${{ matrix.platform }}
-        env:
-          # Windows signing (optional)
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # macOS notarization (optional)
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          if [ "${{ matrix.platform }}" = "windows" ]; then
-            npm run dist:win
-          else
-            npm run dist:linux
-          fi
+          mkdir -p artifacts-linux
+          find dist -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} artifacts-linux/ \;
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-artifacts
-          path: dist/
+          name: linux-artifacts
+          path: artifacts-linux/
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Windows
+        run: npm run dist:win
+
+      - name: Prepare artifacts directory
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts-windows
+          Get-ChildItem dist -Filter "*.exe" -Recurse | Copy-Item -Destination artifacts-windows
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts-windows/
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-22.04
-    needs: [build]
-    permissions:
-      contents: write
+    needs: [build-linux, build-windows]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Download all artifacts
+      - uses: actions/checkout@v4
+
+      - name: Download Linux artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: linux-artifacts
 
-      - name: Prepare release assets
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+
+      - name: Prepare release artifacts
         run: |
-          mkdir -p release-assets
-          # Flatten artifacts into release-assets/
-          find artifacts -type f -name "*.exe" -o -name "*.msi" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" | while read f; do
-            cp "$f" release-assets/
-          done
-          # Generate checksums
-          cd release-assets && sha256sum * > SHA256SUMS.txt
+          mkdir -p release
+          mv linux-artifacts/* release/ 2>/dev/null || true
+          mv windows-artifacts/* release/ 2>/dev/null || true
 
-      - name: Create GitHub Release
+      - name: Create checksums
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name }}
-          name: OpenClaw Desktop ${{ github.ref_name }}
-          draft: true
-          prerelease: false
-          files: |
-            release-assets/*
-          body: |
-            ## OpenClaw Desktop ${{ github.ref_name }}
-
-            ### Installation
-            - **Windows:** Run `OpenClaw.Desktop.Setup.exe` (NSIS installer) or use the portable version.
-            - **macOS:** Open `OpenClaw Desktop.dmg` and drag the app to Applications.
-            - **Linux:** Use the AppImage (make executable) or install the `.deb`/`.rpm` package.
-
-            ### Changes
-            See the commit history for details.
-
-            ### SHA256 Checksums
-            ```
-            $(cat release-assets/SHA256SUMS.txt)
-            ```
-
-      - name: Notify success
-        run: echo "Release draft created for ${{ github.ref_name }}"
+          files: release/*
+          generate_release_notes: true
