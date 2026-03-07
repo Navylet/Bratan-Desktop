@@ -2,122 +2,45 @@
   "appId": "openclaw.desktop",
   "productName": "OpenClaw Desktop",
   "directories": {
-    "output": "dist",
-    "buildResources": "build"
+    "output": "dist"
   },
   "files": [
-    "main.js",
-    "preload.js",
-    "renderer.js",
-    "index.html",
-    "taskManager.js",
-    "integrations/**/*",
-    "tokens/**/*",
-    "credentials/**/*",
-    "assets/**/*",
+    "build/**/*",
     "node_modules/**/*",
+    "package.json",
+    "src/**/*",
     "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
     "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
     "!**/node_modules/*.d.ts",
-    "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,suo,xproj}",
+    "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
     "!.editorconfig",
     "!**/._*",
-    "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,__pycache__,.idea,.vs,.flowconfig,.jshintrc,.eslintrc,.circleci,.nyc_output,appveyor.yml,.travis.yml,circle.yml}"
-  ],
-  "asar": true,
-  "asarUnpack": [
-    "node_modules/puppeteer/**/*",
-    "node_modules/axios/**/*",
-    "node_modules/@codemirror/**/*"
+    "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+    "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+    "!**/{appveyor.yml,.travis.yml,circle.yml}",
+    "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
   ],
   "extraResources": [
     {
-      "from": "credentials",
-      "to": "credentials",
-      "filter": ["*.json"]
-    },
-    {
-      "from": "tokens",
-      "to": "tokens",
-      "filter": ["*.json"]
+      "from": "public/",
+      "to": "public",
+      "filter": ["**/*"]
     }
   ],
-  "publish": null,
   "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      },
-      {
-        "target": "msi",
-        "arch": ["x64"]
-      },
-      {
-        "target": "portable",
-        "arch": ["x64"]
-      }
-    ],
-    "verifyUpdateCodeSignature": false
-  },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "OpenClaw Desktop",
-    "uninstallDisplayName": "OpenClaw Desktop",
-    "include": "build/installer.nsh",
-    "license": "LICENSE"
-  },
-  "mac": {
-    "target": ["pkg"],
-    "category": "public.app-category.productivity",
-    "entitlements": "build/entitlements.mac.plist",
-    "entitlementsInherit": "build/entitlements.mac.plist",
-    "hardenedRuntime": true,
-    "gatekeeperAssess": false,
-    "notarize": false
+    "target": "portable",
+    "icon": "build/icon.ico",
+    "publisherName": "OpenClaw Team"
   },
   "linux": {
-    "target": [
-      {
-        "target": "AppImage",
-        "arch": ["x64"]
-      },
-      {
-        "target": "deb",
-        "arch": ["x64"]
-      },
-      {
-        "target": "rpm",
-        "arch": ["x64"]
-      },
-      {
-        "target": "snap",
-        "arch": ["x64"]
-      }
-    ],
+    "target": ["appimage", "deb", "rpm"],
+    "icon": "build/icon.png",
     "category": "Utility",
-    "maintainer": "OpenClaw Team <team@openclaw.io>",
-    "synopsis": "OpenClaw Desktop application",
-    "description": "OpenClaw Desktop application for prompting and task solving with AI integrations.",
-    "packageCategory": "utils"
+    "maintainer": "OpenClaw Team"
   },
-
-  "snap": {
-    "grade": "stable",
-    "confinement": "strict",
-    "plugs": ["home", "network", "network-bind"],
-    "environment": {
-      "DISABLE_WAYLAND": "1"
-    }
-  },
-  "npmRebuild": false,
-  "nodeGypRebuild": false,
-  "buildDependenciesFromSource": false,
-  "electronVersion": "40.8.0",
-  "electronDownload": {
-    "mirror": "https://github.com/electron/electron/releases/download/v"
+  "mac": {
+    "target": "dmg",
+    "icon": "build/icon.icns",
+    "category": "public.app-category.developer-tools"
   }
 }
