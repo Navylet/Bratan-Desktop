@@ -119,3 +119,4 @@ openclaw-desktop/
 ---
 
 *Сделано с ❤️ для космолёта промптинга.*
+<!-- trigger workflow -->
