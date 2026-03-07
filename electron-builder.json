@@ -4,6 +4,9 @@
   "directories": {
     "output": "dist"
   },
+  "asar": false,
+  "npmRebuild": true,
+  "nodeGypRebuild": true,
   "files": [
     "build/**/*",
     "node_modules/**/*",
