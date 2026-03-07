@@ -28,7 +28,7 @@
     }
   ],
   "win": {
-    "target": "portable",
+    "target": "nsis",
     "icon": "build/icon.ico",
     "publisherName": "OpenClaw Team"
   },
