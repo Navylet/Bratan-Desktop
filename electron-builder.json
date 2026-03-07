@@ -28,10 +28,13 @@
     }
   ],
   "win": {
-    "target": "nsis",
+    "target": "portable",
     "icon": "build/icon.ico",
     "publisherName": "OpenClaw Team"
   },
+  "nsis": false,
+  "msi": false,
+  "appx": false,
   "linux": {
     "target": ["appimage", "deb", "rpm"],
     "icon": "build/icon.png",
