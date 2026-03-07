@@ -71,33 +71,13 @@
     "license": "LICENSE"
   },
   "mac": {
-    "target": ["dmg", "pkg"],
+    "target": ["pkg"],
     "category": "public.app-category.productivity",
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "notarize": false
-  },
-  "dmg": {
-    "iconSize": 128,
-    "contents": [
-      {
-        "x": 380,
-        "y": 180,
-        "type": "link",
-        "path": "/Applications"
-      },
-      {
-        "x": 110,
-        "y": 180,
-        "type": "file"
-      }
-    ],
-    "window": {
-      "width": 540,
-      "height": 380
-    }
   },
   "linux": {
     "target": [
