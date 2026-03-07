@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Братан Desktop</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    * { font-family: 'Inter', sans-serif; }
+    body { -webkit-font-smoothing: antialiased; }
+    .sidebar-icon { @apply w-6 h-6 text-gray-500; }
+    .tab-active { @apply bg-blue-50 text-blue-700 border-r-4 border-blue-600; }
+    .log-entry { @apply border-l-4 pl-3 py-2 mb-2; }
+    .log-stdout { @apply border-l-green-500 bg-green-50; }
+    .log-stderr { @apply border-l-red-500 bg-red-50; }
+    .chat-message-user { @apply bg-blue-100 rounded-lg p-3 ml-8; }
+    .chat-message-assistant { @apply bg-gray-100 rounded-lg p-3 mr-8; }
+    .file-item:hover { @apply bg-gray-100; }
+    .notification-dot { @apply absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="flex h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <div class="w-16 bg-gray-900 text-white flex flex-col items-center py-4 space-y-8">
+      <div class="flex items-center justify-center">
+        <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+          <i class="fas fa-robot text-white text-xl"></i>
+        </div>
+      </div>
+      <div class="flex flex-col items-center space-y-6" role="tablist" aria-label="Основные вкладки">
+        <button id="tab-chat" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800 active" role="tab" aria-controls="content-chat" aria-label="Чат" aria-selected="true">
+          <i class="fas fa-comment-dots sidebar-icon"></i>
+        </button>
+        <button id="tab-logs" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-logs" aria-label="Логи" aria-selected="false">
+          <i class="fas fa-scroll sidebar-icon"></i>
+        </button>
+        <button id="tab-files" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-files" aria-label="Файлы" aria-selected="false">
+          <i class="fas fa-folder-open sidebar-icon"></i>
+        </button>
+        <button id="tab-editor" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-editor" aria-label="Редактор" aria-selected="false">
+          <i class="fas fa-edit sidebar-icon"></i>
+        </button>
+        <button id="tab-agents" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-agents" aria-label="Агенты" aria-selected="false">
+          <i class="fas fa-users sidebar-icon"></i>
+        </button>
+        <button id="tab-integrations" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-integrations" aria-label="Интеграции" aria-selected="false">
+          <i class="fas fa-plug sidebar-icon"></i>
+        </button>
+        <button id="tab-settings" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800" role="tab" aria-controls="content-settings" aria-label="Настройки" aria-selected="false">
+          <i class="fas fa-cog sidebar-icon"></i>
+        </button>
+      </div>
+      <div class="mt-auto flex flex-col space-y-4">
+        <button id="btn-notifications" class="p-2 rounded-lg hover:bg-gray-800 relative" aria-label="Уведомления">
+          <i class="fas fa-bell sidebar-icon"></i>
+          <span id="notification-count" class="notification-dot hidden"></span>
+        </button>
+        <button id="btn-help" class="p-2 rounded-lg hover:bg-gray-800" aria-label="Помощь">
+          <i class="fas fa-question-circle sidebar-icon"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col">
+      <!-- Top Bar -->
+      <div class="h-12 bg-white border-b border-gray-200 px-4 flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <h1 class="text-xl font-semibold" id="current-tab-title">Чат с Братаном</h1>
+          <div class="flex items-center space-x-2">
+            <div id="gateway-status" class="flex items-center">
+              <span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+              <span class="text-sm text-gray-600">Gateway не запущен</span>
+            </div>
+            <button id="btn-start-gateway" class="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">
+              <i class="fas fa-play mr-1"></i> Запустить
+            </button>
+            <button id="btn-stop-gateway" class="text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded" disabled>
+              <i class="fas fa-stop mr-1"></i> Остановить
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div class="text-sm text-gray-500">
+            <i class="fas fa-user mr-1"></i> Дмитрий
+          </div>
+          <div class="text-sm text-gray-500">
+            <i class="fas fa-clock mr-1"></i> <span id="current-time">--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content -->
+      <div class="flex-1 overflow-hidden">
+        <!-- Chat Tab -->
+        <div id="content-chat" class="tab-content h-full flex flex-col p-4" role="tabpanel" aria-labelledby="tab-chat">
+          <div class="flex-1 overflow-y-auto mb-4 space-y-4" id="chat-messages" aria-live="polite" aria-atomic="false">
+            <div class="chat-message-assistant">
+              <div class="font-semibold text-blue-600">Братан (🫂)</div>
+              <div>Привет, бро! Я запущен в десктопном приложении. Готов помогать с GIGA ARPA и не только. Что будем делать?</div>
+              <div class="text-xs text-gray-500 mt-1">только что</div>
+            </div>
+          </div>
+          <div class="border-t pt-4">
+            <div class="flex space-x-2">
+              <input type="text" id="chat-input" placeholder="Напиши сообщение..." class="flex-1 border rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <span id="websocket-status" class="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800 self-center hidden"></span>
+              <button id="btn-send" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium">
+                <i class="fas fa-paper-plane mr-2"></i> Отправить
+              </button>
+            </div>
+            <div class="mt-2 text-sm text-gray-500">
+              <i class="fas fa-lightbulb mr-1"></i> Можно отправлять команды, вопросы, запросы на анализ файлов.
+            </div>
+          </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="content-logs" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-logs">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Логи OpenClaw Gateway</h2>
+            <div class="flex space-x-2">
+              <button id="btn-clear-logs" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded">
+                <i class="fas fa-trash mr-1"></i> Очистить
+              </button>
+              <button id="btn-save-logs" class="text-sm bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded">
+                <i class="fas fa-save mr-1"></i> Сохранить
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto bg-gray-900 text-gray-200 p-4 rounded-lg font-mono text-sm" id="log-container" aria-live="polite" aria-atomic="false">
+            <div class="log-entry log-stdout">[INFO] Добро пожаловать в логи OpenClaw Gateway.</div>
+            <div class="log-entry log-stderr">[WARN] Gateway не запущен. Нажмите "Запустить".</div>
+          </div>
+          <div class="mt-4 text-sm text-gray-600">
+            <i class="fas fa-info-circle mr-1"></i> Логи в реальном времени. Цвета: <span class="text-green-600">stdout</span>, <span class="text-red-600">stderr</span>.
+          </div>
+        </div>
+
+        <!-- Files Tab -->
+        <div id="content-files" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-files">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Файлы рабочего пространства</h2>
+            <div class="flex space-x-2">
+              <button id="btn-refresh-files" class="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">
+                <i class="fas fa-sync-alt mr-1"></i> Обновить
+              </button>
+              <button id="btn-open-workspace" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded">
+                <i class="fas fa-folder-open mr-1"></i> Открыть папку
+              </button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-y-auto bg-white border rounded-lg p-4" id="file-list">
+            <div class="file-item flex items-center p-3 border-b cursor-pointer">
+              <i class="fas fa-file-alt text-gray-400 mr-3"></i>
+              <div class="flex-1">
+                <div class="font-medium">MEMORY.md</div>
+                <div class="text-sm text-gray-500">Долговременная память ассистента</div>
+              </div>
+              <div class="text-xs text-gray-500">2 КБ</div>
+            </div>
+            <div class="file-item flex items-center p-3 border-b cursor-pointer">
+              <i class="fas fa-folder text-yellow-500 mr-3"></i>
+              <div class="flex-1">
+                <div class="font-medium">knowledge</div>
+                <div class="text-sm text-gray-500">База знаний GIGA ARPA</div>
+              </div>
+              <div class="text-xs text-gray-500">—</div>
+            </div>
+          </div>
+          <div class="mt-4 text-sm text-gray-600">
+            <i class="fas fa-info-circle mr-1"></i> Рабочая папка: <code id="workspace-path">~/.openclaw/workspace</code>. Для редактирования файла — кликните дважды.
+          </div>
+        </div>
+
+        <!-- Agents Tab -->
+        <div id="content-agents" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-agents">
+          <h2 class="text-lg font-semibold mb-4">Активные агенты</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="agents-grid">
+            <div class="bg-white border rounded-lg p-4">
+              <div class="flex items-center mb-2">
+                <div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                <div class="font-semibold">Братан (Основной)</div>
+              </div>
+              <div class="text-sm text-gray-600">Главный ассистент, чат с пользователем.</div>
+              <div class="text-xs text-gray-500 mt-2">ID: main</div>
+            </div>
+            <div class="bg-white border rounded-lg p-4">
+              <div class="flex items-center mb-2">
+                <div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                <div class="font-semibold">File Analyst</div>
+              </div>
+              <div class="text-sm text-gray-600">Анализирует документы GIGA ARPA.</div>
+              <div class="text-xs text-gray-500 mt-2">ID: thoughtful-river</div>
+            </div>
+            <div class="bg-white border rounded-lg p-4">
+              <div class="flex items-center mb-2">
+                <div class="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                <div class="font-semibold">CPO GIGA ARPA</div>
+              </div>
+              <div class="text-sm text-gray-600">Руководитель продукта, команда.</div>
+              <div class="text-xs text-gray-500 mt-2">ID: royal-fog</div>
+            </div>
+          </div>
+          <div class="mt-6">
+            <h3 class="font-medium mb-2">Создать нового агента</h3>
+            <div class="flex space-x-2">
+              <input type="text" id="new-agent-name" placeholder="Название агента" class="flex-1 border rounded px-3 py-2" />
+              <input type="text" id="new-agent-task" placeholder="Задача" class="flex-1 border rounded px-3 py-2" />
+              <button id="btn-create-agent" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                <i class="fas fa-plus mr-1"></i> Создать
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Integrations Tab -->
+        <div id="content-integrations" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-integrations">
+          <h2 class="text-lg font-semibold mb-4">Интеграции</h2>
+          <div class="space-y-6 max-w-4xl">
+            <!-- Google Integration -->
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fab fa-google mr-2 text-blue-500"></i> Google
+              </h3>
+              <div class="mb-4">
+                <div class="flex items-center mb-2">
+                  <span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                  <span id="google-status">Не авторизован</span>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">Доступ к Drive, Docs, Calendar, Gmail.</p>
+                <button id="btn-google-auth" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
+                  <i class="fas fa-sign-in-alt mr-2"></i> Авторизовать Google
+                </button>
+                <div id="google-auth-url" class="mt-3 text-xs hidden">
+                  <p>Откройте ссылку:</p>
+                  <a id="google-auth-link" class="text-blue-500 break-all" target="_blank"></a>
+                  <input type="text" id="google-auth-code" placeholder="Введите код" class="border rounded px-2 py-1 mt-2 w-full" />
+                  <button id="btn-google-submit-code" class="mt-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded">Подтвердить</button>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <button id="btn-google-list-files" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded">
+                  <i class="fas fa-list mr-1"></i> Список файлов
+                </button>
+                <button id="btn-google-calendar" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded">
+                  <i class="fas fa-calendar mr-1"></i> Календарь
+                </button>
+              </div>
+            </div>
+
+            <!-- GitHub Integration -->
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fab fa-github mr-2 text-gray-800"></i> GitHub
+              </h3>
+              <div class="mb-4">
+                <div class="flex items-center mb-2">
+                  <span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                  <span id="github-status">Не авторизован</span>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">Доступ к репозиториям, issues, коммитам.</p>
+                <div class="flex space-x-2">
+                  <input type="password" id="github-token" placeholder="GitHub Personal Access Token" class="flex-1 border rounded px-3 py-2" />
+                  <button id="btn-github-auth" class="bg-gray-800 hover:bg-black text-white px-4 py-2 rounded">
+                    <i class="fas fa-key mr-2"></i> Сохранить токен
+                  </button>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-4">
+                <button id="btn-github-repos" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded">
+                  <i class="fas fa-code-branch mr-1"></i> Мои репозитории
+                </button>
+                <button id="btn-github-search" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-2 rounded">
+                  <i class="fas fa-search mr-1"></i> Поиск репозиториев
+                </button>
+              </div>
+            </div>
+
+            <!-- Perplexity API -->
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-brain mr-2 text-purple-500"></i> Perplexity AI
+              </h3>
+              <div class="mb-4">
+                <div class="flex items-center mb-2">
+                  <span class="w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                  <span id="perplexity-status">Доступен (через OpenClaw)</span>
+                </div>
+                <p class="text-sm text-gray-600">Используется для веб-поиска и глубокого анализа.</p>
+              </div>
+              <div class="text-sm">
+                <label class="block font-medium mb-1">Пример поиска:</label>
+                <div class="flex space-x-2">
+                  <input type="text" id="perplexity-query" placeholder="Что ищем?" class="flex-1 border rounded px-3 py-2" value="GIGA ARPA платформа" />
+                  <button id="btn-perplexity-search" class="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded">
+                    <i class="fas fa-search mr-2"></i> Искать
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Task Monitor -->
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-tasks mr-2 text-green-500"></i> Монитор задач
+              </h3>
+              <div id="task-monitor">
+                <div class="text-center text-gray-500 py-4">Нет активных задач</div>
+              </div>
+              <div class="text-xs text-gray-500 mt-2">
+                <i class="fas fa-info-circle mr-1"></i> Очереди: PDF (1), Веб (2), AI (1)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor Tab -->
+        <div id="content-editor" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-editor">
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Редактор файлов</h2>
+            <div class="flex space-x-2">
+              <button id="editor-save" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded" disabled>
+                <i class="fas fa-save mr-2"></i> Сохранить
+              </button>
+              <button id="editor-close" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded">
+                <i class="fas fa-times mr-2"></i> Закрыть
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-col flex-1">
+            <div class="flex items-center mb-2">
+              <span class="font-medium text-gray-700 mr-4">Файл:</span>
+              <span id="editor-filename" class="text-gray-900 flex-1">Не выбран</span>
+              <select id="editor-theme" class="border rounded px-3 py-1 text-sm">
+                <option value="light">Светлая</option>
+                <option value="dark" selected>Тёмная</option>
+                <option value="one-dark">One Dark</option>
+              </select>
+            </div>
+            <div id="editor-container" class="flex-1 border rounded-lg overflow-hidden">
+              <textarea id="editor-fallback" class="w-full h-full p-4 font-mono" placeholder="Выберите файл для редактирования..."></textarea>
+            </div>
+            <div class="mt-2 text-sm text-gray-500 flex justify-between">
+              <div>
+                Синтаксис: 
+                <select id="editor-language" class="border rounded px-2 py-1 ml-2">
+                  <option value="auto">Авто</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="typescript">TypeScript</option>
+                  <option value="html">HTML</option>
+                  <option value="css">CSS</option>
+                  <option value="python">Python</option>
+                  <option value="json">JSON</option>
+                  <option value="markdown">Markdown</option>
+                  <option value="xml">XML</option>
+                  <option value="yaml">YAML</option>
+                </select>
+              </div>
+              <div>
+                <span id="editor-status">Готов</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="content-settings" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-settings">
+          <h2 class="text-lg font-semibold mb-4">Настройки</h2>
+          <div class="space-y-6 max-w-2xl">
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-server mr-2"></i> Настройки OpenClaw
+              </h3>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span>Автозапуск Gateway</span>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-autostart" />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1">Путь к OpenClaw CLI</label>
+                  <input type="text" id="setting-cli-path" value="openclaw" class="w-full border rounded px-3 py-2" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1">Порт Gateway</label>
+                  <input type="number" id="setting-gateway-port" value="3000" class="w-32 border rounded px-3 py-2" />
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-bell mr-2"></i> Уведомления
+              </h3>
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span>Включить уведомления</span>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-notifications" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span>Звуковые уведомления</span>
+                  <label class="switch">
+                    <input type="checkbox" id="setting-sound" checked />
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-paint-brush mr-2"></i> Внешний вид
+              </h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-sm font-medium mb-1">Тема</label>
+                  <select id="setting-theme" class="border rounded px-3 py-2 w-full">
+                    <option value="light">Светлая</option>
+                    <option value="dark">Тёмная</option>
+                    <option value="auto">Системная</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1">Размер шрифта</label>
+                  <input type="range" id="setting-font-size" min="12" max="24" value="16" class="w-full" />
+                  <div class="text-sm text-gray-500" id="font-size-value">16px</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex space-x-4">
+              <button id="btn-save-settings" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg">
+                <i class="fas fa-save mr-2"></i> Сохранить настройки
+              </button>
+              <button id="btn-reset-settings" class="bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">
+                Сбросить
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Inline styles for toggle switch
+    const style = document.createElement('style');
+    style.textContent = `
+      .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+      .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+      input:checked + .slider { background-color: #3b82f6; }
+      input:checked + .slider:before { transform: translateX(26px); }
+    `;
+    document.head.appendChild(style);
+  </script>
+  <script src="src/renderer/src/lib/websocket/openclaw-websocket.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

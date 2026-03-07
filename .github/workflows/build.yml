@@ -1,0 +1,120 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # Version for release tagging
+  APP_VERSION: ${{ github.ref == 'refs/heads/main' && 'nightly' || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        platform: [windows, macos, linux]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Linux dependencies (Linux runner)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      - name: Install Wine (for Windows cross‑build)
+        if: matrix.platform == 'windows'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y wine64 wine32
+
+      - name: Build for ${{ matrix.platform }}
+        env:
+          # Windows signing (optional)
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # macOS notarization (optional)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            npm run dist:win
+          elif [ "${{ matrix.platform }}" = "macos" ]; then
+            npm run dist:mac
+          else
+            npm run dist:linux
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-artifacts
+          path: dist/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    needs: [build]
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          # Flatten artifacts into release-assets/
+          find artifacts -type f -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.pkg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" -o -name "*.snap" | while read f; do
+            cp "$f" release-assets/
+          done
+          # Generate checksums
+          cd release-assets && sha256sum * > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: OpenClaw Desktop ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          files: |
+            release-assets/*
+          body: |
+            ## OpenClaw Desktop ${{ github.ref_name }}
+
+            ### Installation
+            - **Windows:** Run `OpenClaw.Desktop.Setup.exe` (NSIS installer) or use the portable version.
+            - **macOS:** Open `OpenClaw Desktop.dmg` and drag the app to Applications.
+            - **Linux:** Use the AppImage (make executable) or install the `.deb`/`.rpm` package.
+
+            ### Changes
+            See the commit history for details.
+
+            ### SHA256 Checksums
+            ```
+            $(cat release-assets/SHA256SUMS.txt)
+            ```
+
+      - name: Notify success
+        run: echo "Release draft created for ${{ github.ref_name }}"
