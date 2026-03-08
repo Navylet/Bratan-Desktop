@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +17,26 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: playwright-
+
+      - name: Debug info
+        run: |
+          node --version
+          npm --version
+          npx electron-builder --version
 
       - name: Install Linux dependencies
         run: |
@@ -28,6 +48,7 @@ jobs:
 
       - name: Build Electron app
         run: npm run build
+
       - name: Build Linux
         run: npm run dist:linux
 
@@ -52,11 +73,24 @@ jobs:
         with:
           node-version: 22
 
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - name: Debug info
+        run: |
+          node --version
+          npm --version
+          npx electron-builder --version
+
       - name: Install npm dependencies
         run: npm ci
 
       - name: Build Windows
-        run: npm run dist:win
+        run: npm run dist:win-builder
 
       - name: Prepare artifacts directory
         run: |
@@ -69,9 +103,52 @@ jobs:
           name: windows-artifacts
           path: artifacts-windows/
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-
+
+      - name: Debug info
+        run: |
+          node --version
+          npm --version
+          npx electron-builder --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Electron app
+        run: npm run build
+
+      - name: Build macOS
+        run: npm run dist:mac
+
+      - name: Prepare artifacts directory
+        run: |
+          mkdir -p artifacts-macos
+          find dist -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} artifacts-macos/ \;
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: artifacts-macos/
+
   release:
-    runs-on: ubuntu-22.04
-    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
@@ -86,11 +163,17 @@ jobs:
         with:
           name: windows-artifacts
 
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts
+
       - name: Prepare release artifacts
         run: |
           mkdir -p release
           mv linux-artifacts/* release/ 2>/dev/null || true
           mv windows-artifacts/* release/ 2>/dev/null || true
+          mv macos-artifacts/* release/ 2>/dev/null || true
 
       - name: Create checksums
         run: |
