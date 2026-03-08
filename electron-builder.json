@@ -5,8 +5,10 @@
     "output": "dist"
   },
   "asar": false,
-  "npmRebuild": true,
-  "nodeGypRebuild": true,
+  "npmRebuild": false,
+  "nodeGypRebuild": false,
+  "skipNodeRebuild": true,
+  "icon": "assets/icon.png",
   "files": [
     "build/**/*",
     "node_modules/**/*",
@@ -31,21 +33,18 @@
     }
   ],
   "win": {
-    "target": "portable",
-    "icon": "build/icon.ico"
+    "target": "portable"
   },
   "nsis": false,
   "msi": false,
   "appx": false,
   "linux": {
     "target": ["appimage", "deb", "rpm"],
-    "icon": "build/icon.png",
     "category": "Utility",
     "maintainer": "OpenClaw Team"
   },
   "mac": {
     "target": "dmg",
-    "icon": "build/icon.icns",
     "category": "public.app-category.developer-tools"
   }
 }
