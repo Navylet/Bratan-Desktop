@@ -56,12 +56,12 @@
   "build": {
     "appId": "com.openclaw.desktop",
     "productName": "OpenClaw",
-    "main": "main.js",
+    "main": "index.js",
     "directories": {
       "output": "dist"
     },
     "files": [
-      "main.js",
+      "index.js",
       "renderer.js",
       "preload.js",
       "index.html",
