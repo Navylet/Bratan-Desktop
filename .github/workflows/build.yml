@@ -8,62 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: true
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Cache node modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('package-lock.json') }}
-          restore-keys: playwright-
-
-      - name: Debug info
-        run: |
-          node --version
-          npm --version
-          npx electron-builder --version
-
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev librsvg2-dev
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build Electron app
-        run: npm run build
-
-      - name: Build Linux
-        run: npm run dist:linux
-
-      - name: Prepare artifacts directory
-        run: |
-          mkdir -p artifacts-linux
-          find dist -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} artifacts-linux/ \;
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-artifacts
-          path: artifacts-linux/
 
   build-windows:
     runs-on: windows-latest
@@ -107,79 +52,24 @@ jobs:
           name: windows-artifacts
           path: artifacts-windows/
 
-  build-macos:
-    runs-on: macos-latest
-    env:
-      PUPPETEER_SKIP_DOWNLOAD: true
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Cache node modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: npm-${{ hashFiles('package-lock.json') }}
-          restore-keys: npm-
-
-      - name: Debug info
-        run: |
-          node --version
-          npm --version
-          npx electron-builder --version
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build Electron app
-        run: npm run build
-
-      - name: Build macOS
-        run: npm run dist:mac
-
-      - name: Prepare artifacts directory
-        run: |
-          mkdir -p artifacts-macos
-          find dist -type f \( -name "*.dmg" -o -name "*.zip" \) -exec cp {} artifacts-macos/ \;
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-artifacts
-          path: artifacts-macos/
 
   release:
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-windows]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-artifacts
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
           name: windows-artifacts
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-artifacts
-
       - name: Prepare release artifacts
         run: |
           mkdir -p release
-          mv linux-artifacts/* release/ 2>/dev/null || true
           mv windows-artifacts/* release/ 2>/dev/null || true
-          mv macos-artifacts/* release/ 2>/dev/null || true
 
       - name: Create checksums
         run: |
