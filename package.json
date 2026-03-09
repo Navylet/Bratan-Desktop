@@ -53,5 +53,6 @@
     "node-fetch": "^3.3.2",
     "openai": "^6.27.0",
     "puppeteer": "^24.38.0"
-  }
+  },
+  "resolutions": "{\"rimraf\":\"^5.0.5\",\"glob\":\"^10.3.10\",\"inflight\":\"^1.0.6\",\"once\":\"^1.4.0\",\"wrappy\":\"^1.0.2\",\"inherits\":\"^2.0.4\"}"
 }
