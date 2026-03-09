@@ -1,7 +1,6 @@
 {
   "appId": "com.openclaw.desktop",
   "productName": "OpenClaw",
-  "main": "index.js",
   "directories": {
     "output": "dist"
   },
@@ -28,8 +27,7 @@
   "npmRebuild": false,
   "nodeGypRebuild": false,
   "win": {
-    "target": "nsis",
-    "sign": null
+    "target": "nsis"
   },
   "linux": {
     "target": [
