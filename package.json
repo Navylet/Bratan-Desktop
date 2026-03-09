@@ -2,7 +2,7 @@
   "name": "openclaw-desktop",
   "version": "1.0.0",
   "description": "OpenClaw Desktop application for prompting and task solving",
-  "main": "main.js",
+  "main": "index.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
@@ -28,11 +28,11 @@
   "author": "OpenClaw Team",
   "license": "ISC",
   "devDependencies": {
-    "@playwright/test": "^1.50.0",
-    "electron": "^30.0.6",
-    "electron-builder": "^26.8.1",
-    "jest": "^29.7.0",
-    "playwright": "^1.50.0",
+    "@playwright/test": "^1.59.0-alpha-2026-03-09",
+    "electron": "^41.0.0-beta.8",
+    "electron-builder": "^26.8.2",
+    "jest": "^30.2.0",
+    "playwright": "^1.59.0-alpha-2026-03-09",
     "playwright-electron": "^0.5.0"
   },
   "dependencies": {
@@ -47,15 +47,17 @@
     "@googleapis/drive": "^20.1.0",
     "@octokit/rest": "^22.0.1",
     "axios": "^1.13.6",
-    "codemirror": "^6.0.2",
+    "codemirror": "^6.65.7",
     "dotenv": "^17.3.1",
     "googleapis": "^171.4.0",
+    "node-fetch": "^3.3.2",
     "openai": "^6.27.0",
     "puppeteer": "^24.38.0"
   },
   "build": {
     "appId": "com.openclaw.desktop",
     "productName": "OpenClaw",
+    "main": "index.js",
     "directories": {
       "output": "dist"
     },
@@ -78,7 +80,8 @@
       "!**/{appveyor.yml,.travis.yml,circle.yml}",
       "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
     ],
-    "asar": false,
+    "asar": true,
+    "asarUnpack": "index.js",
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "win": {
