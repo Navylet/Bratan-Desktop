@@ -56,7 +56,6 @@
   "build": {
     "appId": "com.openclaw.desktop",
     "productName": "OpenClaw",
-    "main": "index.js",
     "directories": {
       "output": "dist"
     },
@@ -86,7 +85,10 @@
       "target": "nsis"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility",
       "maintainer": "OpenClaw Team"
     }
