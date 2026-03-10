@@ -1,6 +1,8 @@
 # Prototype Mockups
+
 ## OpenClaw Desktop Key Screens
-*Date: 2026‑03‑07*
+
+_Date: 2026‑03‑07_
 
 This document provides wireframe‑style mockups for the redesigned OpenClaw Desktop interface. These are textual representations to guide implementation.
 
@@ -39,6 +41,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Sidebar (7 tabs, active Chat highlighted blue).
 2. Top bar with gateway status and user menu.
 3. Chat messages differentiated by color (blue for user, white for assistant).
@@ -77,6 +80,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Filter buttons for log levels.
 2. Search input.
 3. Log entries with colored text (green info, yellow warn, red error).
@@ -114,6 +118,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Breadcrumb navigation.
 2. Grid/List toggle.
 3. File cards with icon, name, size.
@@ -151,6 +156,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Agent cards with status badge (Running/Stopped).
 2. Resource usage indicators.
 3. Action buttons per card.
@@ -187,6 +193,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Integration cards with logo/icon.
 2. Connection status badge.
 3. Description text.
@@ -221,6 +228,7 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 ```
 
 **Components:**
+
 1. Sidebar navigation for settings categories.
 2. Form fields for each category.
 3. Save/Reset buttons sticky to panel bottom.
@@ -235,4 +243,4 @@ This document provides wireframe‑style mockups for the redesigned OpenClaw Des
 
 ---
 
-*Mockups are conceptual; actual implementation may vary.*
+_Mockups are conceptual; actual implementation may vary._

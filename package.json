@@ -15,6 +15,10 @@
     "dist:linux": "electron-builder --linux --publish never",
     "dist:mac": "electron-builder --mac --publish never",
     "postinstall": "electron-builder install-app-deps",
+    "lint": "eslint . --ext .js,.jsx",
+    "format": "prettier --check \"**/*.{js,json,md,yml,yaml}\"",
+    "audit": "npm audit --audit-level=moderate",
+    "audit:fix": "npm audit fix && npm audit fix --force",
     "test": "jest",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
@@ -29,11 +33,16 @@
   "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.59.0-alpha-2026-03-09",
-    "electron": "^41.0.0-beta.8",
+    "electron": "^26.0.0",
     "electron-builder": "^26.8.2",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.1.1",
     "jest": "^30.2.0",
+    "jest-environment-jsdom": "^30.3.0",
     "playwright": "^1.59.0-alpha-2026-03-09",
-    "playwright-electron": "^0.5.0"
+    "playwright-electron": "^0.5.0",
+    "prettier": "^3.5.0"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

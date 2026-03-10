@@ -36,14 +36,14 @@ class GitHubIntegration {
   // Получить репозитории пользователя
   async getUserRepos(sort = 'updated', direction = 'desc') {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const response = await this.octokit.repos.listForAuthenticatedUser({
       sort,
       direction,
-      per_page: 100
+      per_page: 100,
     });
-    
-    return response.data.map(repo => ({
+
+    return response.data.map((repo) => ({
       id: repo.id,
       name: repo.name,
       fullName: repo.full_name,
@@ -55,23 +55,23 @@ class GitHubIntegration {
       updated: repo.updated_at,
       url: repo.html_url,
       cloneUrl: repo.clone_url,
-      isPrivate: repo.private
+      isPrivate: repo.private,
     }));
   }
 
   // Искать репозитории
   async searchRepos(query, options = {}) {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const { sort = 'stars', order = 'desc', perPage = 50 } = options;
     const response = await this.octokit.search.repos({
       q: query,
       sort,
       order,
-      per_page: perPage
+      per_page: perPage,
     });
-    
-    return response.data.items.map(item => ({
+
+    return response.data.items.map((item) => ({
       id: item.id,
       name: item.name,
       fullName: item.full_name,
@@ -81,22 +81,22 @@ class GitHubIntegration {
       stars: item.stargazers_count,
       forks: item.forks_count,
       updated: item.updated_at,
-      url: item.html_url
+      url: item.html_url,
     }));
   }
 
   // Получить содержимое файла
   async getFileContent(owner, repo, path, ref = 'main') {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     try {
       const response = await this.octokit.repos.getContent({
         owner,
         repo,
         path,
-        ref
+        ref,
       });
-      
+
       if (response.data.content) {
         const content = Buffer.from(response.data.content, 'base64').toString('utf8');
         return {
@@ -105,16 +105,16 @@ class GitHubIntegration {
           encoding: 'base64',
           size: response.data.size,
           sha: response.data.sha,
-          url: response.data.html_url
+          url: response.data.html_url,
         };
       } else {
         // Это директория
-        const files = response.data.map(item => ({
+        const files = response.data.map((item) => ({
           name: item.name,
           path: item.path,
           type: item.type,
           size: item.size,
-          url: item.html_url
+          url: item.html_url,
         }));
         return { path, isDirectory: true, files };
       }
@@ -129,84 +129,84 @@ class GitHubIntegration {
   // Создать issue
   async createIssue(owner, repo, title, body, labels = []) {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const response = await this.octokit.issues.create({
       owner,
       repo,
       title,
       body,
-      labels
+      labels,
     });
-    
+
     return {
       id: response.data.id,
       number: response.data.number,
       title: response.data.title,
       state: response.data.state,
       url: response.data.html_url,
-      createdAt: response.data.created_at
+      createdAt: response.data.created_at,
     };
   }
 
   // Получить последние коммиты
   async getRecentCommits(owner, repo, branch = 'main', perPage = 30) {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const response = await this.octokit.repos.listCommits({
       owner,
       repo,
       sha: branch,
-      per_page: perPage
+      per_page: perPage,
     });
-    
-    return response.data.map(commit => ({
+
+    return response.data.map((commit) => ({
       sha: commit.sha,
       author: commit.commit.author.name,
       email: commit.commit.author.email,
       date: commit.commit.author.date,
       message: commit.commit.message,
-      url: commit.html_url
+      url: commit.html_url,
     }));
   }
 
   // Создать Pull Request
   async createPullRequest(owner, repo, title, head, base, body = '') {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const response = await this.octokit.pulls.create({
       owner,
       repo,
       title,
       head,
       base,
-      body
+      body,
     });
-    
+
     return {
       id: response.data.id,
       number: response.data.number,
       title: response.data.title,
       state: response.data.state,
-      url: response.data.html_url
+      url: response.data.html_url,
     };
   }
 
   // Получить активность пользователя
   async getUserActivity(username, perPage = 50) {
     if (!this.octokit) throw new Error('GitHub не авторизован');
-    
+
     const response = await this.octokit.activity.listEventsForUser({
       username,
-      per_page: perPage
+      per_page: perPage,
     });
-    
-    return response.data.map(event => ({
+
+    return response.data.map((event) => ({
       id: event.id,
       type: event.type,
       repo: event.repo.name,
       actor: event.actor.login,
       createdAt: event.created_at,
-      payload: event.payload
+      payload: event.payload,
     }));
   }
 

@@ -25,6 +25,7 @@ git push origin main
 ## 4. Если сборка всё ещё падает
 
 ### Ошибка `binding.gyp not found`
+
 - Убедиться, что в `electron-builder.json` установлены:
   ```json
   "npmRebuild": false,
@@ -33,6 +34,7 @@ git push origin main
   ```
 
 ### Ошибка отсутствия иконок
+
 - Создать иконки вручную:
   ```bash
   mkdir -p build
@@ -45,6 +47,7 @@ git push origin main
   ```
 
 ### Ошибки компиляции нативных модулей (если появятся)
+
 - Для Windows добавить шаг установки build tools (в `.github/workflows/build.yml`):
   ```yaml
   - name: Install Windows build tools
@@ -58,5 +61,6 @@ git push origin main
 - При необходимости настроить автоматическую публикацию (release, auto-update).
 - Обновить документацию по сборке.
 
----  
-*Этот список можно использовать как чек‑лист.*
+---
+
+_Этот список можно использовать как чек‑лист._

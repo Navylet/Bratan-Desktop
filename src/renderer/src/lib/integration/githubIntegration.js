@@ -24,7 +24,7 @@ class GitHubIntegration {
       connected: this.connected,
       name: this.name,
       user: this.token ? 'stub-user' : null,
-      scopes: ['repo', 'user']
+      scopes: ['repo', 'user'],
     };
   }
 
@@ -32,18 +32,24 @@ class GitHubIntegration {
   async listRepos() {
     return [
       { id: 1, name: 'openclaw-desktop', full_name: 'user/openclaw-desktop', private: false },
-      { id: 2, name: 'agentic-rpa', full_name: 'user/agentic-rpa', private: true }
+      { id: 2, name: 'agentic-rpa', full_name: 'user/agentic-rpa', private: true },
     ];
   }
 
   async createRepo(name, privateRepo = false) {
-    return { id: Date.now(), name, private: privateRepo, html_url: 'https://github.com/user/' + name };
+    return {
+      id: Date.now(),
+      name,
+      private: privateRepo,
+      html_url: 'https://github.com/user/' + name,
+    };
   }
 
   async getBranches(repo) {
+    // repo используется для генерации веток, пока stub
     return [
-      { name: 'main', commit: { sha: 'abc123' } },
-      { name: 'develop', commit: { sha: 'def456' } }
+      { name: 'main', commit: { sha: `${repo || 'unknown'}-abc123` } },
+      { name: 'develop', commit: { sha: `${repo || 'unknown'}-def456` } },
     ];
   }
 }

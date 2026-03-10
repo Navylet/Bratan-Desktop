@@ -1,9 +1,17 @@
-const { app, BrowserWindow, ipcMain, Notification, shell, Menu, dialog, Tray, globalShortcut } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Notification,
+  shell,
+  Menu,
+  Tray,
+  globalShortcut,
+} = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
-const { TaskQueue } = require('./taskManager');
 const { GoogleIntegration } = require('./integrations/google');
 const { GitHubIntegration } = require('./integrations/github');
 
@@ -51,14 +59,15 @@ function createWindow() {
     width: 1200,
     height: 800,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true,
-      preload: path.join(__dirname, 'preload.js')
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: false, // sandbox mode can be enabled with full refactor
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     title: 'Братан Desktop',
-    show: false
+    show: false,
   });
 
   // Load the index.html
@@ -104,39 +113,39 @@ function setApplicationMenu() {
           label: 'Открыть рабочую папку',
           click: () => {
             shell.openPath(path.join(os.homedir(), '.openclaw', 'workspace'));
-          }
+          },
         },
         {
           label: 'Открыть папку проекта',
           click: () => {
             shell.openPath(__dirname);
-          }
+          },
         },
         { type: 'separator' },
         {
           label: 'Выйти',
           accelerator: 'CmdOrCtrl+Q',
-          role: 'quit'
-        }
-      ]
+          role: 'quit',
+        },
+      ],
     },
     {
       label: 'Сервер',
       submenu: [
         {
           label: 'Запустить OpenClaw Gateway',
-          click: startOpenClawGateway
+          click: startOpenClawGateway,
         },
         {
           label: 'Остановить OpenClaw Gateway',
-          click: stopOpenClawGateway
+          click: stopOpenClawGateway,
         },
         { type: 'separator' },
         {
           label: 'Проверить статус',
-          click: checkGatewayStatus
-        }
-      ]
+          click: checkGatewayStatus,
+        },
+      ],
     },
     {
       label: 'Вид',
@@ -149,27 +158,27 @@ function setApplicationMenu() {
         { role: 'zoomIn' },
         { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' }
-      ]
+        { role: 'togglefullscreen' },
+      ],
     },
     {
       label: 'Помощь',
       submenu: [
         {
           label: 'Документация OpenClaw',
-          click: () => shell.openExternal('https://docs.openclaw.ai')
+          click: () => shell.openExternal('https://docs.openclaw.ai'),
         },
         {
           label: 'GitHub',
-          click: () => shell.openExternal('https://github.com/openclaw/openclaw')
+          click: () => shell.openExternal('https://github.com/openclaw/openclaw'),
         },
         { type: 'separator' },
         {
           label: 'О приложении',
-          click: showAbout
-        }
-      ]
-    }
+          click: showAbout,
+        },
+      ],
+    },
   ];
 
   const menu = Menu.buildFromTemplate(template);
@@ -179,23 +188,23 @@ function setApplicationMenu() {
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   tray = new Tray(iconPath);
-  
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Показать/Скрыть окно',
-      click: toggleWindowVisibility
+      click: toggleWindowVisibility,
     },
     {
       label: 'Открыть чат',
-      click: () => showWindow('chat')
+      click: () => showWindow('chat'),
     },
     {
       label: 'Открыть логи',
-      click: () => showWindow('logs')
+      click: () => showWindow('logs'),
     },
     {
       label: 'Открыть настройки',
-      click: () => showWindow('settings')
+      click: () => showWindow('settings'),
     },
     { type: 'separator' },
     {
@@ -206,13 +215,13 @@ function createTray() {
         unregisterGlobalShortcuts();
         if (tray) tray.destroy();
         app.quit();
-      }
-    }
+      },
+    },
   ]);
-  
+
   tray.setToolTip('Братан Desktop');
   tray.setContextMenu(contextMenu);
-  
+
   // Левый клик переключает видимость окна
   tray.on('click', toggleWindowVisibility);
 
@@ -243,7 +252,7 @@ function unregisterGlobalShortcuts() {
 function showAbout() {
   new Notification({
     title: 'Братан Desktop',
-    body: 'Десктопное приложение OpenClaw для управления агентами и файлами.'
+    body: 'Десктопное приложение OpenClaw для управления агентами и файлами.',
   }).show();
 }
 
@@ -257,7 +266,7 @@ function startOpenClawGateway() {
 
   openclawProcess = spawn('openclaw', ['gateway', 'start'], {
     stdio: 'pipe',
-    shell: true
+    shell: false,
   });
 
   openclawProcess.stdout.on('data', (data) => {
@@ -316,10 +325,10 @@ function stopOpenClawGateway() {
 }
 
 function checkGatewayStatus() {
-  const check = spawn('openclaw', ['gateway', 'status'], { shell: true });
+  const check = spawn('openclaw', ['gateway', 'status'], { shell: false });
   let output = '';
-  check.stdout.on('data', (data) => output += data.toString());
-  check.stderr.on('data', (data) => output += data.toString());
+  check.stdout.on('data', (data) => (output += data.toString()));
+  check.stderr.on('data', (data) => (output += data.toString()));
   check.on('close', () => {
     showNotification(`Статус OpenClaw Gateway:\n${output}`);
   });
@@ -328,79 +337,121 @@ function checkGatewayStatus() {
 function showNotification(message) {
   new Notification({
     title: 'Братан Desktop',
-    body: message
+    body: message,
   }).show();
 }
+
+ipcMain.handle('show-notification', (event, { title, body }) => {
+  new Notification({
+    title: title || 'Братан Desktop',
+    body: body || '',
+  }).show();
+});
 
 // IPC handlers
 ipcMain.handle('openclaw-start', () => startOpenClawGateway());
 ipcMain.handle('openclaw-stop', () => stopOpenClawGateway());
 ipcMain.handle('openclaw-status', () => checkGatewayStatus());
 ipcMain.handle('openclaw-send-message', async (event, message) => {
-  try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    
-    // Escape message for shell
-    const escapedMsg = message.replace(/'/g, "'\"'\"'");
-    const cmd = `openclaw sessions send --session "telegram:446533349" '${escapedMsg}'`;
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 10000 });
-    
-    if (stderr && !stderr.includes('warning')) {
-      console.error('OpenClaw send error:', stderr);
-      throw new Error(stderr);
-    }
-    
-    return { success: true, output: stdout };
-  } catch (err) {
-    throw new Error(`Ошибка отправки сообщения: ${err.message}`);
-  }
+  return new Promise((resolve, reject) => {
+    const send = spawn(
+      'openclaw',
+      ['sessions', 'send', '--session', 'telegram:446533349', message],
+      { shell: false }
+    );
+    let stdout = '';
+    let stderr = '';
+
+    send.stdout.on('data', (data) => (stdout += data.toString()));
+    send.stderr.on('data', (data) => (stderr += data.toString()));
+
+    send.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`OpenClaw send failed (${code}): ${stderr || stdout}`));
+      }
+
+      if (stderr && !stderr.toLowerCase().includes('warning')) {
+        return reject(new Error(stderr));
+      }
+
+      resolve({ success: true, output: stdout });
+    });
+
+    send.on('error', (err) => {
+      reject(new Error(`Ошибка отправки сообщения: ${err.message}`));
+    });
+  });
 });
 
 ipcMain.handle('openclaw-get-messages', async () => {
-  try {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
-    
-    const cmd = `openclaw sessions history --session "telegram:446533349" --limit 20 --json`;
-    const { stdout, stderr } = await execAsync(cmd, { timeout: 10000 });
-    
-    if (stderr && !stderr.includes('warning')) {
-      console.error('OpenClaw history error:', stderr);
-      throw new Error(stderr);
-    }
-    
-    let messages = [];
-    try {
-      const parsed = JSON.parse(stdout);
-      if (Array.isArray(parsed)) {
-        messages = parsed.map(msg => ({
-          id: msg.id || msg.timestamp,
-          sender: msg.sender || 'Unknown',
-          text: msg.text || msg.content || '',
-          timestamp: msg.timestamp || Date.now(),
-          isUser: msg.sender === 'user' || msg.sender === 'D U' || msg.sender === '446533349'
-        }));
+  return new Promise((resolve, reject) => {
+    const history = spawn(
+      'openclaw',
+      ['sessions', 'history', '--session', 'telegram:446533349', '--limit', '20', '--json'],
+      { shell: false }
+    );
+    let stdout = '';
+    let stderr = '';
+
+    history.stdout.on('data', (data) => (stdout += data.toString()));
+    history.stderr.on('data', (data) => (stderr += data.toString()));
+
+    history.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`OpenClaw history failed (${code}): ${stderr || stdout}`));
       }
-    } catch (parseErr) {
-      console.warn('Failed to parse messages JSON:', parseErr);
-    }
-    
-    return { messages };
-  } catch (err) {
-    throw new Error(`Ошибка получения сообщений: ${err.message}`);
-  }
+
+      if (stderr && !stderr.toLowerCase().includes('warning')) {
+        console.warn('OpenClaw history stderr:', stderr);
+      }
+
+      let messages = [];
+      try {
+        const parsed = JSON.parse(stdout);
+        if (Array.isArray(parsed)) {
+          messages = parsed.map((msg) => ({
+            id: msg.id || msg.timestamp,
+            sender: msg.sender || 'Unknown',
+            text: msg.text || msg.content || '',
+            timestamp: msg.timestamp || Date.now(),
+            isUser: msg.sender === 'user' || msg.sender === 'D U' || msg.sender === '446533349',
+          }));
+        }
+      } catch (parseErr) {
+        console.warn('Failed to parse messages JSON:', parseErr);
+      }
+
+      resolve({ messages });
+    });
+
+    history.on('error', (err) => {
+      reject(new Error(`Ошибка получения сообщений: ${err.message}`));
+    });
+  });
 });
+ipcMain.handle('get-workspace-path', () => {
+  return path.join(os.homedir(), '.openclaw', 'workspace');
+});
+
 ipcMain.handle('open-folder', (event, folderPath) => {
-  shell.openPath(folderPath);
+  const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
+  const resolved = path.resolve(folderPath);
+  if (!resolved.startsWith(workspace)) {
+    throw new Error('Открытие папки за пределами рабочего пространства запрещено.');
+  }
+  shell.openPath(resolved);
 });
 
 ipcMain.handle('fs-read-file', async (event, filePath) => {
   try {
     const fs = require('fs').promises;
-    const content = await fs.readFile(filePath, 'utf8');
+    const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(workspace)) {
+      throw new Error('Чтение файлов за пределами рабочего пространства запрещено.');
+    }
+
+    const content = await fs.readFile(resolved, 'utf8');
     return content;
   } catch (err) {
     throw new Error(`Ошибка чтения файла: ${err.message}`);
@@ -410,7 +461,13 @@ ipcMain.handle('fs-read-file', async (event, filePath) => {
 ipcMain.handle('fs-write-file', async (event, filePath, content) => {
   try {
     const fs = require('fs').promises;
-    await fs.writeFile(filePath, content, 'utf8');
+    const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(workspace)) {
+      throw new Error('Запись файлов за пределами рабочего пространства запрещено.');
+    }
+
+    await fs.writeFile(resolved, content, 'utf8');
     return { success: true };
   } catch (err) {
     throw new Error(`Ошибка записи файла: ${err.message}`);
@@ -489,10 +546,10 @@ app.whenReady().then(() => {
   // Initialize managers
   const { HeavyTaskManager } = require('./taskManager');
   taskManager = new HeavyTaskManager();
-  
+
   googleIntegration = new GoogleIntegration();
   githubIntegration = new GitHubIntegration();
-  
+
   // Try to load saved tokens
   loadIntegrations();
 
@@ -519,7 +576,7 @@ async function loadIntegrations() {
   } catch (err) {
     console.log('GitHub token not loaded:', err.message);
   }
-  
+
   // Google requires OAuth flow, will be initialized on demand
 }
 

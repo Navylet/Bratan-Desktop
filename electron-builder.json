@@ -30,9 +30,7 @@
     "target": "nsis"
   },
   "linux": {
-    "target": [
-      "deb"
-    ],
+    "target": ["deb"],
     "category": "Utility",
     "maintainer": "OpenClaw Team"
   }

@@ -20,7 +20,7 @@ class GoogleIntegration {
     return {
       connected: this.connected,
       name: this.name,
-      services: ['Drive', 'Docs', 'Calendar', 'Gmail']
+      services: ['Drive', 'Docs', 'Calendar', 'Gmail'],
     };
   }
 
@@ -28,7 +28,7 @@ class GoogleIntegration {
   async listFiles() {
     return [
       { id: '1', name: 'document1.txt', type: 'text', size: '1KB' },
-      { id: '2', name: 'spreadsheet.xlsx', type: 'spreadsheet', size: '2KB' }
+      { id: '2', name: 'spreadsheet.xlsx', type: 'spreadsheet', size: '2KB' },
     ];
   }
 

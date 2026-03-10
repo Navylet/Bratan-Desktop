@@ -16,7 +16,7 @@ class GoogleIntegration {
       'https://www.googleapis.com/auth/drive.readonly',
       'https://www.googleapis.com/auth/documents.readonly',
       'https://www.googleapis.com/auth/calendar.readonly',
-      'https://www.googleapis.com/auth/gmail.readonly'
+      'https://www.googleapis.com/auth/gmail.readonly',
     ];
   }
 
@@ -41,21 +41,21 @@ class GoogleIntegration {
     return this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: this.scopes,
-      prompt: 'consent'
+      prompt: 'consent',
     });
   }
 
   // Обработка кода авторизации
   async handleAuthCode(code) {
     if (!this.oauth2Client) throw new Error('OAuth client not initialized');
-    
+
     const { tokens } = await this.oauth2Client.getToken(code);
     this.oauth2Client.setCredentials(tokens);
-    
+
     // Сохраняем токены
     await fs.mkdir(path.dirname(this.tokensPath), { recursive: true });
     await fs.writeFile(this.tokensPath, JSON.stringify(tokens, null, 2));
-    
+
     await this.createServices();
     return { success: true };
   }
@@ -71,30 +71,30 @@ class GoogleIntegration {
   // Получить список файлов с Google Drive
   async listDriveFiles(query = '', pageSize = 50) {
     if (!this.drive) throw new Error('Drive service not initialized');
-    
+
     const response = await this.drive.files.list({
       q: query || '',
       pageSize,
       fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink)',
-      orderBy: 'modifiedTime desc'
+      orderBy: 'modifiedTime desc',
     });
-    
+
     return response.data.files || [];
   }
 
   // Прочитать Google Doc
   async readDocument(documentId) {
     if (!this.docs) throw new Error('Docs service not initialized');
-    
+
     const response = await this.docs.documents.get({ documentId });
     const document = response.data;
-    
+
     // Извлечение текста
     let text = '';
     if (document.body && document.body.content) {
-      document.body.content.forEach(element => {
+      document.body.content.forEach((element) => {
         if (element.paragraph) {
-          element.paragraph.elements.forEach(elem => {
+          element.paragraph.elements.forEach((elem) => {
             if (elem.textRun) {
               text += elem.textRun.content;
             }
@@ -103,53 +103,53 @@ class GoogleIntegration {
         }
       });
     }
-    
+
     return {
       id: documentId,
       title: document.title,
       text: text.trim(),
-      raw: document
+      raw: document,
     };
   }
 
   // Получить события календаря
   async getCalendarEvents(maxResults = 50, timeMin = new Date().toISOString()) {
     if (!this.calendar) throw new Error('Calendar service not initialized');
-    
+
     const response = await this.calendar.events.list({
       calendarId: 'primary',
       timeMin,
       maxResults,
       singleEvents: true,
-      orderBy: 'startTime'
+      orderBy: 'startTime',
     });
-    
+
     return response.data.items || [];
   }
 
   // Получить непрочитанные письма
   async getUnreadEmails(maxResults = 20) {
     if (!this.gmail) throw new Error('Gmail service not initialized');
-    
+
     const response = await this.gmail.users.messages.list({
       userId: 'me',
       q: 'is:unread',
-      maxResults
+      maxResults,
     });
-    
+
     const messages = response.data.messages || [];
     const details = await Promise.all(
-      messages.slice(0, 10).map(msg => 
-        this.gmail.users.messages.get({ userId: 'me', id: msg.id })
-      )
+      messages
+        .slice(0, 10)
+        .map((msg) => this.gmail.users.messages.get({ userId: 'me', id: msg.id }))
     );
-    
-    return details.map(detail => ({
+
+    return details.map((detail) => ({
       id: detail.data.id,
-      subject: detail.data.payload.headers.find(h => h.name === 'Subject')?.value || 'Без темы',
-      from: detail.data.payload.headers.find(h => h.name === 'From')?.value,
+      subject: detail.data.payload.headers.find((h) => h.name === 'Subject')?.value || 'Без темы',
+      from: detail.data.payload.headers.find((h) => h.name === 'From')?.value,
       snippet: detail.data.snippet,
-      date: detail.data.payload.headers.find(h => h.name === 'Date')?.value
+      date: detail.data.payload.headers.find((h) => h.name === 'Date')?.value,
     }));
   }
 

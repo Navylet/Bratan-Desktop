@@ -1,6 +1,8 @@
 # Visual Redesign Proposals
+
 ## OpenClaw Desktop
-*Date: 2026‑03‑07*
+
+_Date: 2026‑03‑07_
 
 This document details specific redesign suggestions for each of the 7 tabs, based on the proposed Design System.
 
@@ -9,18 +11,21 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 ## 1. Sidebar Navigation
 
 ### Current State
+
 - Dark gray background (`bg-gray-900`).
 - Circular icon buttons with `text-gray-400`.
 - Active tab highlighted with blue background (`bg-blue-500`).
 - Tooltips on hover.
 
 ### Issues
+
 1. Inactive icons too dim (low contrast).
 2. Active tab background fills entire circle; icon color white – works but could be more refined.
 3. No visual separation between sidebar and main content (border missing).
 4. Hit area smaller than 44×44px (WCAG touch target minimum).
 
 ### Proposed Redesign
+
 1. **Background:** Keep dark (`bg-gray-900`) for contrast.
 2. **Icons:**
    - Inactive: `text-gray-300` (higher contrast).
@@ -33,6 +38,7 @@ This document details specific redesign suggestions for each of the 7 tabs, base
    - Implement `role="tablist"` and `role="tab"`.
 
 ### Visual Example
+
 ```
 [🫂] Chat        (active: blue bg, white icon)
 [📄] Logs        (inactive: gray icon)
@@ -48,18 +54,21 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 ## 2. Top Bar
 
 ### Current State
+
 - White background, full width.
 - Gateway status (dot + text), gateway controls (start/stop).
 - User info (avatar + name) on right.
 - Border bottom `border‑b border‑gray‑200`.
 
 ### Issues
+
 1. Visually flat; no elevation to separate from content.
 2. Gateway status dot uses color alone (red/green).
 3. Controls are plain text links; could be more button‑like.
 4. No responsive behavior on window resize.
 
 ### Proposed Redesign
+
 1. **Elevation:** Add `shadow‑sm` (subtle drop shadow).
 2. **Gateway Status:** Use badge component:
    - `bg‑success` + "Online", `bg‑error` + "Offline", `bg‑warning` + "Connecting".
@@ -69,6 +78,7 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 5. **Responsive:** On narrow windows, hide user name, keep avatar.
 
 ### Layout
+
 ```
 [OpenClaw Logo]  |  [Gateway: ● Online] [Start] [Stop] [Restart]  |  [👤 Dmitry ▼]
 ```
@@ -78,12 +88,14 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 ## 3. Chat Tab
 
 ### Current State
+
 - Messages in bubbles (gray background).
 - Input at bottom: textarea + send button.
 - Timestamps on hover.
 - "Thinking" indicator (animated ellipsis).
 
 ### Issues
+
 1. User vs assistant bubbles look identical (both `bg‑gray‑100`).
 2. No visual hierarchy within conversation.
 3. Send button is plain (`bg‑blue‑500`); could be more distinctive.
@@ -91,6 +103,7 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 5. Input area lacks character count, formatting hints.
 
 ### Proposed Redesign
+
 1. **Message Differentiation:**
    - User: `bg‑primary text‑white` (blue bubble, aligned right).
    - Assistant: `bg‑surface border border‑border` (white card, aligned left).
@@ -103,6 +116,7 @@ This document details specific redesign suggestions for each of the 7 tabs, base
 5. **Thinking Indicator:** Use animated gradient bar or pulsating dots.
 
 ### Visual Example
+
 ```
 [User]                                      [2:30 PM]
 Hello, can you help me?                     [Copy 🔗]
@@ -118,18 +132,21 @@ Sure, what do you need?                     [Copy 🔗]
 ## 4. Logs Tab
 
 ### Current State
+
 - Dark background (`bg‑gray‑900`).
 - Monospace logs with colored text (green stdout, red stderr).
 - Auto‑scroll toggle.
 - Clear logs button.
 
 ### Issues
+
 1. Long lines wrap awkwardly; horizontal scroll needed.
 2. No filtering by log level (info, warn, error).
 3. No timestamps in default view.
 4. No search within logs.
 
 ### Proposed Redesign
+
 1. **Layout:** Split into two panels:
    - Left: log entries with horizontal scrolling.
    - Right: log details (timestamp, level, source) when entry selected.
@@ -139,6 +156,7 @@ Sure, what do you need?                     [Copy 🔗]
 5. **Accessibility:** Use `aria‑live="polite"` for new entries.
 
 ### Visual Example
+
 ```
 [All] [Info] [Warn] [Error] [Debug]  [Search...] [Wrap] [Clear]
 
@@ -151,11 +169,13 @@ Sure, what do you need?                     [Copy 🔗]
 ## 5. Files Tab
 
 ### Current State
+
 - List of files with icons (file‑alt, folder‑open).
 - File name, maybe size.
 - "Open" button (not yet functional).
 
 ### Issues
+
 1. No visual distinction between files and folders.
 2. No grid view.
 3. No sorting (name, size, date).
@@ -163,6 +183,7 @@ Sure, what do you need?                     [Copy 🔗]
 5. No preview pane.
 
 ### Proposed Redesign
+
 1. **View Toggle:** Grid vs list view.
 2. **File Cards (grid):**
    - Icon (size based on file type).
@@ -174,6 +195,7 @@ Sure, what do you need?                     [Copy 🔗]
 6. **Actions:** Open, Rename, Delete (with confirmation).
 
 ### Visual Example
+
 ```
 📁 workspace/  ⏵  📁 openclaw‑desktop/  ⏵  [design‑system]
 
@@ -189,6 +211,7 @@ Sure, what do you need?                     [Copy 🔗]
 ## 6. Agents Tab
 
 ### Current State
+
 - Grid of cards, each with:
   - Agent name, description.
   - Status dot (green/red).
@@ -196,12 +219,14 @@ Sure, what do you need?                     [Copy 🔗]
   - Buttons: Start, Stop, Restart.
 
 ### Issues
+
 1. Cards have inconsistent heights.
 2. Status dot small and color‑only.
 3. No grouping by agent type.
 4. No details view.
 
 ### Proposed Redesign
+
 1. **Card Consistency:** Fixed height, equal width.
 2. **Status Badge:** Use badge with icon + text (Running, Stopped).
 3. **Grouping:** Tabs for "All", "Running", "Stopped", "By Type".
@@ -209,6 +234,7 @@ Sure, what do you need?                     [Copy 🔗]
 5. **Actions:** Move Start/Stop/Restart to hover‑reveal buttons to reduce clutter.
 
 ### Visual Example
+
 ```
 [All] [Running] [Stopped] [By Type]
 
@@ -229,9 +255,11 @@ Status: ● Stopped
 ## 7. Integrations Tab
 
 ### Current State
+
 - Placeholder content "Integrations".
 
 ### Proposed Design
+
 1. **Integration Tiles:** Card grid, each tile:
    - Logo/icon.
    - Name.
@@ -242,6 +270,7 @@ Status: ● Stopped
 3. **Search/Filter:** By name, category.
 
 ### Visual Example
+
 ```
 [All] [Messaging] [Storage] [AI]
 
@@ -261,15 +290,18 @@ Status: Not connected
 ## 8. Settings Tab
 
 ### Current State
+
 - Basic form fields (not fully implemented).
 
 ### Proposed Design
+
 1. **Sidebar Navigation:** Left‑hand categories (General, Appearance, Agents, Security, Advanced).
 2. **Content Panel:** Form for selected category.
 3. **Consistent Inputs:** Use design‑system input components.
 4. **Save/Reset:** Sticky footer with "Save Changes" and "Reset" buttons.
 
 ### Visual Example
+
 ```
 [General]    [Appearance]    [Agents]    [Security]    [Advanced]
 
@@ -288,16 +320,19 @@ Font size:  [Small ● Medium ● Large]
 ## Implementation Notes
 
 ### Phasing
+
 1. **Phase 1 (Quick Wins):** Sidebar, top bar, chat bubble colors.
 2. **Phase 2 (Medium):** Logs filtering, files grid/list, agent card redesign.
 3. **Phase 3 (Full):** Integrations, settings, advanced features.
 
 ### Design Tokens
+
 All colors, spacing, and components should reference the Design System Guide.
 
 ### Accessibility
+
 Each change must be evaluated for WCAG compliance (contrast, semantics, keyboard navigation).
 
 ---
 
-*Proposals are subject to discussion with the development team.*
+_Proposals are subject to discussion with the development team._

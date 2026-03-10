@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 
 jobs:
   test:
@@ -14,46 +14,55 @@ jobs:
         node-version: [18.x, 20.x]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Cache node modules
-      uses: actions/cache@v3
-      with:
-        path: ~/.npm
-        key: npm-${{ hashFiles('package-lock.json') }}-${{ matrix.node-version }}
-        restore-keys: npm-
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}-${{ matrix.node-version }}
+          restore-keys: npm-
 
-    - name: Cache Playwright browsers
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/ms-playwright
-        key: playwright-${{ hashFiles('package-lock.json') }}-${{ matrix.node-version }}
-        restore-keys: playwright-
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}-${{ matrix.node-version }}
+          restore-keys: playwright-
 
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Run unit tests
-      run: npm test
+      - name: Audit dependencies
+        run: npm run audit
 
-    - name: Install Playwright browsers (if not cached)
-      run: npx playwright install chromium
+      - name: Run lint
+        run: npm run lint
 
-    - name: Install xvfb for Electron GUI
-      run: sudo apt-get update && sudo apt-get install -y xvfb libnspr4 libnss3 libgtk-3-0
+      - name: Format check
+        run: npm run format
 
-    - name: Run e2e tests with xvfb
-      run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm run test:e2e -- --timeout=60000
+      - name: Run unit tests
+        run: npm test
 
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: playwright-report-${{ matrix.node-version }}
-        path: playwright-report/
-        retention-days: 7
+      - name: Install Playwright browsers (if not cached)
+        run: npx playwright install chromium
+
+      - name: Install xvfb for Electron GUI
+        run: sudo apt-get update && sudo apt-get install -y xvfb libnspr4 libnss3 libgtk-3-0
+
+      - name: Run e2e tests with xvfb
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npm run test:e2e -- --timeout=60000
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.node-version }}
+          path: playwright-report/
+          retention-days: 7

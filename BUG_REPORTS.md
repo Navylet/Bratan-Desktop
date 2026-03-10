@@ -1,11 +1,13 @@
 # Баг-репорты OpenClaw Desktop
 
 ## Общая информация
+
 - **Дата тестирования:** 2026-03-07
 - **Окружение:** WSL2 (Ubuntu 22.04), Node.js v22.22.1, Electron 31.4.0
 - **Тестировщик:** QA Tester Subagent
 
 ## Приоритеты
+
 - **Critical:** Блокирующая ошибка, приложение не запускается или ключевая функция недоступна.
 - **Major:** Основная функция не работает, но есть обходной путь.
 - **Minor:** Незначительная проблема, не влияющая на основные функции.
@@ -14,6 +16,7 @@
 ---
 
 ## #1 Отсутствуют модули googleIntegration и githubIntegration
+
 - **ID:** BUG-001
 - **Severity:** Critical
 - **Priority:** High
@@ -22,16 +25,19 @@
 
 **Описание:**
 В файле `main.js` происходит импорт модулей:
+
 ```javascript
 const googleIntegration = require('./googleIntegration');
 const githubIntegration = require('./githubIntegration');
 ```
+
 Однако в директории проекта отсутствуют файлы `googleIntegration.js` и `githubIntegration.js`.
 
 **Последствия:**
 При запуске приложения будет выброшена ошибка `Error: Cannot find module './googleIntegration'`, которая приведёт к падению всего приложения. Интеграции с Google и GitHub полностью неработоспособны.
 
 **Шаги воспроизведения:**
+
 1. Установить зависимости (`npm install`).
 2. Запустить приложение (`npm start`).
 3. Наблюдать ошибку в консоли и крах приложения.
@@ -43,12 +49,14 @@ const githubIntegration = require('./githubIntegration');
 Модули отсутствуют, приложение не запускается.
 
 **Рекомендация:**
+
 - Создать файлы `googleIntegration.js` и `githubIntegration.js` с корректной реализацией.
 - Либо изменить импорт на использование пакетов из `node_modules` (например, `require('openclaw-js/google')`).
 
 ---
 
 ## #2 Необработанные ошибки в промисах (renderer.js)
+
 - **ID:** BUG-002
 - **Severity:** Major
 - **Priority:** Medium
@@ -57,6 +65,7 @@ const githubIntegration = require('./githubIntegration');
 
 **Описание:**
 Многие вызовы асинхронных функций (`window.api.*`) не имеют обработки ошибок (`try/catch` или `.catch`). Например:
+
 - Вкладка «Интеграции»: вызовы `window.api.google.authUrl()`, `window.api.github.init()` и т.д.
 - Вкладка «Агенты»: `window.api.openclaw.start()`, `window.api.openclaw.stop()`.
 - Вкладка «Файлы»: `window.api.fs.readFile()`.
@@ -64,16 +73,19 @@ const githubIntegration = require('./githubIntegration');
 Если промис будет отклонён (например, из‑за отсутствия сети, неверных токенов, недоступности сервиса), ошибка останется необработанной, что может привести к «зависанию» интерфейса, неявному сбою или непредсказуемому поведению.
 
 **Пример кода (renderer.js строка ~480):**
+
 ```javascript
 const url = await window.api.google.authUrl();
 window.open(url);
 ```
+
 Нет `try/catch`.
 
 **Последствия:**
 Пользователь не получит обратной связи при ошибке; интерфейс может перестать реагировать.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Интеграции».
 3. Нажать кнопку «Google Auth», симулировать сбой сети (например, отключить интернет).
@@ -92,6 +104,7 @@ window.open(url);
 ---
 
 ## #3 Отсутствие индикаторов загрузки для долгих операций
+
 - **ID:** BUG-003
 - **Severity:** Minor
 - **Priority:** Low
@@ -102,6 +115,7 @@ window.open(url);
 При выполнении долгих операций (загрузка логов, чтение больших файлов, анализ PDF, поиск в интернете) не отображаются индикаторы загрузки (спиннеры, прогресс‑бары). Пользователь не знает, работает ли приложение или зависло.
 
 **Примеры:**
+
 - Загрузка логов (кнопка «Load logs»).
 - Загрузка списка файлов из Google Drive.
 - Выполнение задачи анализа PDF.
@@ -110,6 +124,7 @@ window.open(url);
 Плохой пользовательский опыт; пользователь может думать, что приложение сломалось, и пытаться повторно нажать кнопку, что усугубит проблему.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Логи».
 3. Нажать «Load logs» (если логов много).
@@ -127,6 +142,7 @@ window.open(url);
 ---
 
 ## #4 Не реализована фильтрация логов по уровню (error, warn, info)
+
 - **ID:** BUG-004
 - **Severity:** Major
 - **Priority:** Medium
@@ -137,16 +153,24 @@ window.open(url);
 Во вкладке «Логи» присутствуют кнопки фильтрации по уровням («Error», «Warn», «Info»), но их обработчики не реализованы. В `renderer.js` нет кода, который бы фильтровал отображаемые логи по уровню.
 
 **Код (строки ~90-100):**
+
 ```javascript
-document.getElementById('filter-error').addEventListener('click', () => { /* нет реализации */ });
-document.getElementById('filter-warn').addEventListener('click', () => { /* нет реализации */ });
-document.getElementById('filter-info').addEventListener('click', () => { /* нет реализации */ });
+document.getElementById('filter-error').addEventListener('click', () => {
+  /* нет реализации */
+});
+document.getElementById('filter-warn').addEventListener('click', () => {
+  /* нет реализации */
+});
+document.getElementById('filter-info').addEventListener('click', () => {
+  /* нет реализации */
+});
 ```
 
 **Последствия:**
 Фильтрация не работает; пользователь видит все логи всегда, что затрудняет поиск ошибок.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Логи».
 3. Нажать кнопку «Error» (или «Warn», «Info»).
@@ -165,6 +189,7 @@ document.getElementById('filter-info').addEventListener('click', () => { /* не
 ---
 
 ## #5 Поиск по логам не имеет debouncing
+
 - **ID:** BUG-005
 - **Severity:** Minor
 - **Priority:** Low
@@ -175,6 +200,7 @@ document.getElementById('filter-info').addEventListener('click', () => { /* не
 Поле поиска в логах (`#log-search`) вызывает обработчик `searchLogs` на каждое нажатие клавиши без задержки (debouncing). При большом количестве логов это может привести к фризам интерфейса.
 
 **Код (строка ~80):**
+
 ```javascript
 document.getElementById('log-search').addEventListener('input', searchLogs);
 ```
@@ -183,6 +209,7 @@ document.getElementById('log-search').addEventListener('input', searchLogs);
 Падение производительности при быстром вводе.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Логи».
 3. Загрузить много логов (если возможно).
@@ -201,6 +228,7 @@ document.getElementById('log-search').addEventListener('input', searchLogs);
 ---
 
 ## #6 Отсутствует обработка ошибок для shell.openExternal
+
 - **ID:** BUG-006
 - **Severity:** Minor
 - **Priority:** Low
@@ -211,6 +239,7 @@ document.getElementById('log-search').addEventListener('input', searchLogs);
 В обработчике `google-auth-url` (строка ~95) используется `shell.openExternal(url)` без обработки возможных ошибок (например, если URL некорректен или нет доступного браузера).
 
 **Код:**
+
 ```javascript
 shell.openExternal(url);
 ```
@@ -219,6 +248,7 @@ shell.openExternal(url);
 Если `openExternal` выбросит исключение, оно не будет обработано, и пользователь не получит уведомления.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Интеграции».
 3. Нажать «Google Auth» (при условии, что интеграция работает).
@@ -238,6 +268,7 @@ shell.openExternal(url);
 ---
 
 ## #7 Нет проверки на дублирующиеся клики (кнопки запуска/остановки агента)
+
 - **ID:** BUG-007
 - **Severity:** Minor
 - **Priority:** Low
@@ -251,6 +282,7 @@ shell.openExternal(url);
 Возможны race conditions и непредсказуемое состояние агента.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Агенты».
 3. Быстро нажать кнопку «Start» несколько раз подряд.
@@ -269,6 +301,7 @@ shell.openExternal(url);
 ---
 
 ## #8 Отсутствует подтверждение при удалении файла
+
 - **ID:** BUG-008
 - **Severity:** Major
 - **Priority:** Medium
@@ -279,10 +312,11 @@ shell.openExternal(url);
 Во вкладке «Файлы» при клике на кнопку удаления (иконка корзины) файл удаляется сразу, без подтверждения. Это может привести к случайной потере данных.
 
 **Код (строка ~140):**
+
 ```javascript
 deleteBtn.addEventListener('click', async () => {
-    await window.api.fs.deleteFile(filePath); // нет подтверждения
-    loadFiles(currentDir);
+  await window.api.fs.deleteFile(filePath); // нет подтверждения
+  loadFiles(currentDir);
 });
 ```
 
@@ -290,6 +324,7 @@ deleteBtn.addEventListener('click', async () => {
 Пользователь может случайно удалить важный файл.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Файлы».
 3. Навести на файл, нажать иконку корзины.
@@ -308,6 +343,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #9 Не поддерживается перетаскивание файлов (drag‑and‑drop) в редактор
+
 - **ID:** BUG-009
 - **Severity:** Minor
 - **Priority:** Low
@@ -321,6 +357,7 @@ deleteBtn.addEventListener('click', async () => {
 Менее удобный workflow; пользователь должен находить файл через вкладку «Файлы».
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перетащить текстовый файл из проводника в область редактора.
 3. Ожидать: файл открывается.
@@ -338,6 +375,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #10 Нет автосохранения в редакторе
+
 - **ID:** BUG-010
 - **Severity:** Minor
 - **Priority:** Low
@@ -351,6 +389,7 @@ deleteBtn.addEventListener('click', async () => {
 Потеря данных.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Открыть файл в редакторе.
 3. Внести изменения.
@@ -370,6 +409,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #11 Неправильный путь к иконкам в UI_PREVIEW.md
+
 - **ID:** BUG-011
 - **Severity:** Trivial
 - **Priority:** Low
@@ -380,6 +420,7 @@ deleteBtn.addEventListener('click', async () => {
 В файле `UI_PREVIEW.md` ссылки на иконки используют относительный путь `images/`, но в репозитории нет директории `images` с этими файлами. Это приводит к битым изображениям в документации.
 
 **Пример:**
+
 ```markdown
 ![Chat Tab](images/chat-tab.png)
 ```
@@ -388,6 +429,7 @@ deleteBtn.addEventListener('click', async () => {
 Документация выглядит неаккуратно.
 
 **Шаги воспроизведения:**
+
 1. Открыть `UI_PREVIEW.md` в любом markdown‑просмотрщике.
 2. Увидеть битые изображения.
 
@@ -403,6 +445,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #12 Отсутствует валидация токенов API (интеграции)
+
 - **ID:** BUG-012
 - **Severity:** Major
 - **Priority:** Medium
@@ -416,6 +459,7 @@ deleteBtn.addEventListener('click', async () => {
 Пользователь не узнает, что токен неверен, пока не попытается выполнить действие, что ухудшает опыт.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Перейти во вкладку «Интеграции».
 3. Ввести случайную строку в поле токена GitHub.
@@ -435,6 +479,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #13 Нет поддержки прокси для внешних запросов
+
 - **ID:** BUG-013
 - **Severity:** Minor
 - **Priority:** Low
@@ -448,6 +493,7 @@ deleteBtn.addEventListener('click', async () => {
 Приложение не сможет работать за прокси, интеграции будут недоступны.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение в сети, требующей прокси.
 2. Попытаться использовать любую интеграцию.
 3. Ожидать: запросы проходят через прокси.
@@ -465,6 +511,7 @@ deleteBtn.addEventListener('click', async () => {
 ---
 
 ## #14 Кросс‑платформенные проблемы: пути к openclaw CLI
+
 - **ID:** BUG-014
 - **Severity:** Major
 - **Priority:** Medium
@@ -475,6 +522,7 @@ deleteBtn.addEventListener('click', async () => {
 В коде используется вызов `openclaw` как CLI команда (например, для запуска Gateway). Предполагается, что `openclaw` доступен в PATH. Однако на разных ОС могут быть различия (расширение `.exe` на Windows, разные пути установки). В текущей реализации нет проверки платформы и подбора корректного пути.
 
 **Код (строка ~30):**
+
 ```javascript
 const { exec } = require('child_process');
 const openclawProcess = exec('openclaw gateway start', { ... });
@@ -484,6 +532,7 @@ const openclawProcess = exec('openclaw gateway start', { ... });
 На Windows команда `openclaw` может не работать (нужно `openclaw.exe`). Gateway может не запуститься.
 
 **Шаги воспроизведения:**
+
 1. Установить OpenClaw Desktop на Windows.
 2. Нажать кнопку запуска Gateway.
 3. Ожидать: успешный запуск.
@@ -501,6 +550,7 @@ const openclawProcess = exec('openclaw gateway start', { ... });
 ---
 
 ## #15 Нет обработки ситуации, когда Gateway уже запущен
+
 - **ID:** BUG-015
 - **Severity:** Minor
 - **Priority:** Low
@@ -511,15 +561,18 @@ const openclawProcess = exec('openclaw gateway start', { ... });
 При нажатии кнопки «Start Gateway» не проверяется, запущен ли уже Gateway. Может быть запущено несколько экземпляров, что приведёт к конфликту портов.
 
 **Код (строка ~30):**
+
 ```javascript
 const startOpenClawGateway = () => { ... }
 ```
+
 Нет проверки на уже запущенный процесс.
 
 **Последствия:**
 Конфликт портов, возможный краш Gateway.
 
 **Шаги воспроизведения:**
+
 1. Запустить приложение.
 2. Нажать «Start Gateway».
 3. Дождаться запуска.
@@ -539,7 +592,9 @@ const startOpenClawGateway = () => { ... }
 ---
 
 ## Заключение
+
 Выявлено **15** проблем:
+
 - Critical: 1
 - Major: 5
 - Minor: 7

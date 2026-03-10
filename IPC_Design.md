@@ -1,4 +1,5 @@
 # IPC Design Improvements
+
 ## OpenClaw Desktop (Братан Desktop)
 
 **Дата:** 2026-03-07  
@@ -82,7 +83,7 @@ class IPCRouter {
 
   async handleRequest(event, channel, ...args) {
     const { schema, handler } = this.handlers.get(channel);
-    
+
     // Валидация
     const { error, value } = schema.validate(args);
     if (error) {
@@ -108,6 +109,7 @@ module.exports = new IPCRouter();
 ### 3.2. Единый формат ответа
 
 Все IPC‑ответы должны иметь структуру:
+
 ```typescript
 interface IPCResponse<T = any> {
   success: boolean;
@@ -188,8 +190,7 @@ function safePath(userPath) {
 
 ```javascript
 // preload
-window.api.fs.readMultiple = (paths) => 
-  ipcRenderer.invoke('fs:readMultiple', paths);
+window.api.fs.readMultiple = (paths) => ipcRenderer.invoke('fs:readMultiple', paths);
 
 // main
 ipcRouter.register('fs:readMultiple', schema, async (event, paths) => {
@@ -251,8 +252,9 @@ function checkRateLimit(senderId, channel) {
   const key = `${senderId}:${channel}`;
   const now = Date.now();
   const window = rateLimit.get(key) || [];
-  const recent = window.filter(t => now - t < 1000); // последняя секунда
-  if (recent.length > 10) { // максимум 10 вызовов в секунду
+  const recent = window.filter((t) => now - t < 1000); // последняя секунда
+  if (recent.length > 10) {
+    // максимум 10 вызовов в секунду
     throw new Error('Rate limit exceeded');
   }
   recent.push(now);
@@ -265,21 +267,25 @@ function checkRateLimit(senderId, channel) {
 ## 5. План внедрения
 
 ### Фаза 1: Рефакторинг существующих хендлеров (2‑3 дня)
+
 1. Создать `ipcRouter.js` и зарегистрировать все текущие каналы.
 2. Добавить единый формат ответа и обработку ошибок.
 3. Протестировать, что все функции работают как прежде.
 
 ### Фаза 2: Валидация и безопасность (2 дня)
+
 4. Внедрить Joi‑схемы для всех каналов.
 5. Добавить безопасные обёртки для путей.
 6. Проверить отсутствие regressions.
 
 ### Фаза 3: Оптимизации (3‑4 дня)
+
 7. Реализовать батчинг для часто используемых операций.
 8. Добавить LRU‑кэш для идемпотентных запросов.
 9. Внедрить rate limiting и логирование.
 
 ### Фаза 4: Инструменты и мониторинг (1‑2 дня)
+
 10. Создать IPC‑дашборд в UI (только в dev‑режиме) для просмотра метрик.
 11. Добавить стресс‑тесты IPC.
 
@@ -288,6 +294,7 @@ function checkRateLimit(senderId, channel) {
 ## 6. Пример конечной реализации
 
 ### main.js
+
 ```javascript
 const { app, BrowserWindow } = require('electron');
 const ipcRouter = require('./main/ipcRouter');
@@ -309,6 +316,7 @@ ipcRouter.register('google:listFiles', schemas['google:listFiles'], async (event
 ```
 
 ### preload.js
+
 ```javascript
 const { contextBridge, ipcRenderer } = require('electron');
 
@@ -327,6 +335,7 @@ contextBridge.exposeInMainWorld('api', api);
 ```
 
 ### renderer.js
+
 ```javascript
 // Использование
 async function loadFile() {

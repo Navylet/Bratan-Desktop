@@ -34,18 +34,19 @@ Platform‑specific settings are defined under `win`, `mac`, and `linux` keys.
 
 The following assets must be present in the `assets/` folder:
 
-| Platform | File                    | Required sizes                                  |
-|----------|-------------------------|-------------------------------------------------|
-| Windows  | `icon.ico`              | 16×16, 32×32, 48×48, 64×64, 128×128, 256×256   |
-| macOS    | `icon.icns`             | 16×16, 32×32, 64×64, 128×128, 256×256, 512×512 |
-| Linux    | `icon.png`              | 256×256 (scalable)                              |
-| macOS DMG| `dmg-background.png`    | 540×380 (optional)                              |
+| Platform  | File                 | Required sizes                                 |
+| --------- | -------------------- | ---------------------------------------------- |
+| Windows   | `icon.ico`           | 16×16, 32×32, 48×48, 64×64, 128×128, 256×256   |
+| macOS     | `icon.icns`          | 16×16, 32×32, 64×64, 128×128, 256×256, 512×512 |
+| Linux     | `icon.png`           | 256×256 (scalable)                             |
+| macOS DMG | `dmg-background.png` | 540×380 (optional)                             |
 
 If assets are missing, electron‑builder will use a default Electron icon.
 
 **To generate icons:** use a tool like [electron-icon-builder](https://www.npmjs.com/package/electron-icon-builder) or an online converter.
 
 Example using `electron-icon-builder`:
+
 ```bash
 npx electron-icon-builder --input=assets/icon.png --output=assets
 ```
@@ -98,10 +99,13 @@ Artifacts will be placed in `dist/`.
 4. The build will automatically sign the executables.
 
 **Open‑source alternative:** Use a self‑signed certificate (users will see a security warning). Generate a self‑signed cert with:
+
 ```bash
 openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes
 ```
+
 Then convert to PFX:
+
 ```bash
 openssl pkcs12 -export -out certificate.pfx -inkey key.pem -in cert.pem
 ```
@@ -140,6 +144,7 @@ A sample workflow `.github/workflows/build.yml` is provided. It builds for all t
 - `APPLE_TEAM_ID`
 
 **Trigger:**
+
 - Push to `main` → build artifacts, run tests, upload artifacts as workflow run output.
 - Tag `v*` → same, plus create a draft release with all installers attached.
 
@@ -158,23 +163,28 @@ Similar setup; refer to electron‑builder documentation for multi‑platform CI
 ## Troubleshooting
 
 ### “Icon not found”
+
 - Ensure the `assets/` folder exists with required icon files.
 - If you don't have icons, remove the `icon` keys from `electron-builder.json` (default Electron icon will be used).
 
 ### Windows signing fails
+
 - Verify that `CSC_LINK` points to a valid PFX file (Base64 encoded in CI).
 - Ensure `CSC_KEY_PASSWORD` is correct.
 
 ### macOS notarization fails
+
 - Check that the Apple ID credentials are correct.
 - Ensure the app is signed with a Developer ID certificate (not a development certificate).
 - View logs with `xcrun notarytool log <submission‑id> --keychain-profile AC_PASSWORD`.
 
 ### Linux AppImage fails to run
+
 - Ensure `FUSE` is installed (or run with `--appimage-extract-and-run`).
 - For snap builds, the `snapcraft` tool must be installed.
 
 ### Build takes too long / large size
+
 - Check `asarUnpack` list; exclude large modules that aren't needed at runtime.
 - Use `npm prune --production` before packaging.
 - Consider using `electron-builder`’s compression settings.

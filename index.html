@@ -303,6 +303,24 @@
               </div>
             </div>
 
+            <!-- PDF Analysis -->
+            <div class="bg-white border rounded-lg p-4">
+              <h3 class="font-semibold mb-3 flex items-center">
+                <i class="fas fa-file-pdf mr-2 text-red-500"></i> Анализ PDF
+              </h3>
+              <div class="grid grid-cols-1 gap-3">
+                <input type="text" id="pdf-path" placeholder="Путь к PDF (например ~/.openclaw/workspace/file.pdf)" class="border rounded px-3 py-2 w-full" />
+                <input type="text" id="pdf-pages" placeholder="Страницы для анализа (all или 1-3)" class="border rounded px-3 py-2 w-full" />
+                <label class="inline-flex items-center">
+                  <input type="checkbox" id="pdf-ocr" class="mr-2" /> Использовать OCR
+                </label>
+                <div class="flex space-x-2">
+                  <button id="btn-pdf-analyze" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded">Запустить анализ</button>
+                </div>
+                <pre id="pdf-analysis-result" class="bg-gray-100 border rounded p-3 h-40 overflow-auto"></pre>
+              </div>
+            </div>
+
             <!-- Task Monitor -->
             <div class="bg-white border rounded-lg p-4">
               <h3 class="font-semibold mb-3 flex items-center">

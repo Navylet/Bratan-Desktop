@@ -15,7 +15,7 @@ test.describe('OpenClaw Desktop', () => {
     });
 
     // Wait for Electron to start and open debugging port
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     // Connect to the Electron instance via CDP
     browser = await chromium.connectOverCDP(`http://localhost:${port}`);

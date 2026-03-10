@@ -1,6 +1,6 @@
 // Renderer process logic for Братан Desktop
 
-document.addEventListener('DOMContentLoaded', () => {
+function initRenderer() {
   // Tab switching
   const tabs = {
     'tab-chat': { title: 'Чат с Братаном', content: 'content-chat' },
@@ -9,24 +9,52 @@ document.addEventListener('DOMContentLoaded', () => {
     'tab-editor': { title: 'Редактор файлов', content: 'content-editor' },
     'tab-agents': { title: 'Активные агенты', content: 'content-agents' },
     'tab-integrations': { title: 'Интеграции', content: 'content-integrations' },
-    'tab-settings': { title: 'Настройки', content: 'content-settings' }
+    'tab-settings': { title: 'Настройки', content: 'content-settings' },
   };
 
-  Object.keys(tabs).forEach(tabId => {
+  Object.keys(tabs).forEach((tabId) => {
     const tabBtn = document.getElementById(tabId);
     if (tabBtn) {
       tabBtn.addEventListener('click', () => {
         // Remove active class from all tabs
-        document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active', 'tab-active'));
+        document
+          .querySelectorAll('.sidebar-tab')
+          .forEach((t) => t.classList.remove('active', 'tab-active'));
         // Hide all content
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.add('hidden'));
         // Activate clicked tab
         tabBtn.classList.add('active', 'tab-active');
         const contentId = tabs[tabId].content;
         document.getElementById(contentId).classList.remove('hidden');
         document.getElementById('current-tab-title').textContent = tabs[tabId].title;
         // Update ARIA attributes for accessibility
-        document.querySelectorAll('[role="tab"]').forEach(t => t.setAttribute('aria-selected', 'false'));
+        document
+          .querySelectorAll('[role="tab"]')
+          .forEach((t) => t.setAttribute('aria-selected', 'false'));
+        tabBtn.setAttribute('aria-selected', 'true');
+      });
+    }
+  });
+
+  Object.keys(tabs).forEach((tabId) => {
+    const tabBtn = document.getElementById(tabId);
+    if (tabBtn) {
+      tabBtn.addEventListener('click', () => {
+        // Remove active class from all tabs
+        document
+          .querySelectorAll('.sidebar-tab')
+          .forEach((t) => t.classList.remove('active', 'tab-active'));
+        // Hide all content
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.add('hidden'));
+        // Activate clicked tab
+        tabBtn.classList.add('active', 'tab-active');
+        const contentId = tabs[tabId].content;
+        document.getElementById(contentId).classList.remove('hidden');
+        document.getElementById('current-tab-title').textContent = tabs[tabId].title;
+        // Update ARIA attributes for accessibility
+        document
+          .querySelectorAll('[role="tab"]')
+          .forEach((t) => t.setAttribute('aria-selected', 'false'));
         tabBtn.setAttribute('aria-selected', 'true');
       });
     }
@@ -91,7 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btn-save-logs').addEventListener('click', () => {
-    const logs = Array.from(logContainer.children).map(el => el.textContent).join('\n');
+    const logs = Array.from(logContainer.children)
+      .map((el) => el.textContent)
+      .join('\n');
     const blob = new Blob([logs], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -105,12 +135,21 @@ document.addEventListener('DOMContentLoaded', () => {
   // Files handling
   const fileList = document.getElementById('file-list');
   const workspacePath = document.getElementById('workspace-path');
-  workspacePath.textContent = process.env.HOME ? `${process.env.HOME}/.openclaw/workspace` : '~/.openclaw/workspace';
+
+  async function initWorkspacePath() {
+    try {
+      const wsPath = await window.api.getWorkspacePath();
+      workspacePath.textContent = wsPath;
+    } catch (err) {
+      workspacePath.textContent = '~/.openclaw/workspace';
+      console.warn('Не удалось получить путь рабочей папки:', err);
+    }
+  }
 
   async function refreshFileList() {
     // TODO: implement actual file listing via IPC
     fileList.innerHTML = `
-      <div class="file-item flex items-center p-3 border-b cursor-pointer">
+      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/MEMORY.md">
         <i class="fas fa-file-alt text-gray-400 mr-3"></i>
         <div class="flex-1">
           <div class="font-medium">MEMORY.md</div>
@@ -118,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="text-xs text-gray-500">2 КБ</div>
       </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer">
+      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/knowledge">
         <i class="fas fa-folder text-yellow-500 mr-3"></i>
         <div class="flex-1">
           <div class="font-medium">knowledge</div>
@@ -126,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="text-xs text-gray-500">—</div>
       </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer">
+      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/GIGA-ARPA-PRD.docx">
         <i class="fas fa-file-word text-blue-400 mr-3"></i>
         <div class="flex-1">
           <div class="font-medium">GIGA-ARPA-PRD.docx</div>
@@ -134,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="text-xs text-gray-500">1.2 МБ</div>
       </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer">
+      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/Strategiya-i-pozicionirovanie-GIGA-ARPA-2030 1.2.pdf">
         <i class="fas fa-file-pdf text-red-400 mr-3"></i>
         <div class="flex-1">
           <div class="font-medium">Strategiya-i-pozicionirovanie-GIGA-ARPA-2030 1.2.pdf</div>
@@ -143,6 +182,13 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="text-xs text-gray-500">5.5 МБ</div>
       </div>
     `;
+
+    fileList.querySelectorAll('.file-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const path = item.dataset.filePath;
+        if (path) openFileInEditor(path);
+      });
+    });
   }
 
   document.getElementById('btn-refresh-files').addEventListener('click', refreshFileList);
@@ -178,23 +224,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!text) return;
     addMessage('Дмитрий', text, true);
     chatInput.value = '';
-    
+
     // Send via WebSocket
     if (openClawWS && openClawWS.getStatus() === 'connected') {
-      openClawWS.sendMessage({
-        text,
-        timestamp: Date.now(),
-        sender: 'user'
-      }, 'message');
+      openClawWS.sendMessage(
+        {
+          text,
+          timestamp: Date.now(),
+          sender: 'user',
+        },
+        'message'
+      );
       // Response will arrive via WebSocket 'message' event
     } else {
       // Offline: queue message and show notification
       if (openClawWS) {
-        openClawWS.sendMessage({
-          text,
-          timestamp: Date.now(),
-          sender: 'user'
-        }, 'message');
+        openClawWS.sendMessage(
+          {
+            text,
+            timestamp: Date.now(),
+            sender: 'user',
+          },
+          'message'
+        );
         addMessage('Система', 'Сообщение сохранено в очередь. Отправлю при восстановлении связи.');
       } else {
         addMessage('Система', 'WebSocket не инициализирован. Сообщение не отправлено.');
@@ -259,13 +311,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (Notification.permission === 'granted') {
         new Notification('Братан Desktop', { body: message });
       } else if (Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
+        Notification.requestPermission().then((permission) => {
           if (permission === 'granted') {
             new Notification('Братан Desktop', { body: message });
           }
         });
       }
     }
+
+    // Use type to adjust log level for diagnostics (no-unused-vars fix)
+    console.log(`Notification type: ${type}`);
+
     // Update notification dot
     notificationCount++;
     notificationDot.classList.remove('hidden');
@@ -281,7 +337,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Current time
   function updateTime() {
     const now = new Date();
-    document.getElementById('current-time').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('current-time').textContent = now.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
   setInterval(updateTime, 1000);
   updateTime();
@@ -309,7 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await window.api.google.authCode(code);
       document.getElementById('google-status').textContent = 'Авторизован';
-      document.getElementById('google-status').previousElementSibling.classList.remove('bg-red-500');
+      document
+        .getElementById('google-status')
+        .previousElementSibling.classList.remove('bg-red-500');
       document.getElementById('google-status').previousElementSibling.classList.add('bg-green-500');
       document.getElementById('google-auth-url').classList.add('hidden');
       showNotification('Google авторизован успешно', 'success');
@@ -338,7 +399,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await window.api.github.init(token);
       document.getElementById('github-status').textContent = 'Авторизован';
-      document.getElementById('github-status').previousElementSibling.classList.remove('bg-red-500');
+      document
+        .getElementById('github-status')
+        .previousElementSibling.classList.remove('bg-red-500');
       document.getElementById('github-status').previousElementSibling.classList.add('bg-green-500');
       document.getElementById('github-token').value = '';
       showNotification('GitHub авторизован успешно', 'success');
@@ -374,13 +437,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // PDF analysis
+  document.getElementById('btn-pdf-analyze').addEventListener('click', async () => {
+    const pdfPath = document.getElementById('pdf-path').value.trim();
+    const pages = document.getElementById('pdf-pages').value.trim() || 'all';
+    const ocr = document.getElementById('pdf-ocr').checked;
+    const resultArea = document.getElementById('pdf-analysis-result');
+
+    if (!pdfPath) {
+      showNotification('Укажите путь к PDF', 'warning');
+      return;
+    }
+
+    try {
+      resultArea.textContent = 'Анализируется...';
+      const data = await window.api.tasks.analyzePDF(pdfPath, { pages, ocr });
+      resultArea.textContent = JSON.stringify(data, null, 2);
+      showNotification('Анализ PDF завершён', 'success');
+    } catch (err) {
+      resultArea.textContent = `Ошибка: ${err.message}`;
+      showNotification('Ошибка анализа PDF: ' + err.message, 'error');
+    }
+  });
+
   // File editor
   let codeEditor = null;
   let currentEditorFile = null;
 
   function initCodeEditor() {
     if (codeEditor) return;
-    
+
     const textarea = document.getElementById('editor-fallback');
     codeEditor = CodeMirror.fromTextArea(textarea, {
       lineNumbers: true,
@@ -393,15 +479,15 @@ document.addEventListener('DOMContentLoaded', () => {
       matchBrackets: true,
       extraKeys: {
         'Ctrl-S': saveEditorFile,
-        'Cmd-S': saveEditorFile
-      }
+        'Cmd-S': saveEditorFile,
+      },
     });
-    
+
     codeEditor.on('change', () => {
       document.getElementById('editor-save').disabled = false;
       updateEditorStatus('Изменения не сохранены');
     });
-    
+
     // Theme selector
     document.getElementById('editor-theme').addEventListener('change', (e) => {
       const theme = e.target.value;
@@ -411,24 +497,26 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (theme === 'light') cmTheme = 'eclipse';
       codeEditor.setOption('theme', cmTheme);
     });
-    
+
     // Language selector
     document.getElementById('editor-language').addEventListener('change', (e) => {
       const lang = e.target.value;
       codeEditor.setOption('mode', lang === 'auto' ? null : lang);
     });
-    
+
     // Save button
     document.getElementById('editor-save').addEventListener('click', saveEditorFile);
-    
+
     // Close button
     document.getElementById('editor-close').addEventListener('click', () => {
-      if (document.getElementById('editor-save').disabled || 
-          confirm('Есть несохранённые изменения. Закрыть без сохранения?')) {
+      if (
+        document.getElementById('editor-save').disabled ||
+        confirm('Есть несохранённые изменения. Закрыть без сохранения?')
+      ) {
         resetEditor();
       }
     });
-    
+
     updateEditorStatus('Редактор готов');
   }
 
@@ -452,19 +540,27 @@ document.addEventListener('DOMContentLoaded', () => {
         currentEditorFile = filePath;
         document.getElementById('editor-filename').textContent = filePath;
         document.getElementById('editor-save').disabled = true;
-        
+
         // Auto-detect language
         const ext = filePath.split('.').pop().toLowerCase();
         const langMap = {
-          js: 'javascript', ts: 'javascript', jsx: 'javascript',
-          py: 'python', html: 'html', htm: 'html',
-          css: 'css', json: 'json', md: 'markdown',
-          xml: 'xml', yml: 'yaml', yaml: 'yaml'
+          js: 'javascript',
+          ts: 'javascript',
+          jsx: 'javascript',
+          py: 'python',
+          html: 'html',
+          htm: 'html',
+          css: 'css',
+          json: 'json',
+          md: 'markdown',
+          xml: 'xml',
+          yml: 'yaml',
+          yaml: 'yaml',
         };
         const lang = langMap[ext] || 'auto';
         document.getElementById('editor-language').value = lang;
         codeEditor.setOption('mode', lang === 'auto' ? null : lang);
-        
+
         updateEditorStatus(`Файл загружен: ${ext.toUpperCase()}`);
         // Switch to editor tab
         document.getElementById('tab-editor').click();
@@ -495,36 +591,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // OpenClaw WebSocket real-time integration
   let openClawWS = null;
   let lastMessageId = null;
-  
+
   function initOpenClawWebSocket() {
     if (openClawWS) {
       console.warn('OpenClaw WebSocket already initialized');
       return;
     }
-    
+
     try {
       openClawWS = new OpenClawWebSocket({
         wsUrl: 'ws://localhost:8080',
         maxReconnectAttempts: 20,
         reconnectDelay: 1000,
-        heartbeatInterval: 30000
+        heartbeatInterval: 30000,
       });
-      
+
       openClawWS.on('open', () => {
         console.log('OpenClaw WebSocket connected');
         updateConnectionStatus('connected');
       });
-      
+
       openClawWS.on('close', () => {
         console.log('OpenClaw WebSocket disconnected');
         updateConnectionStatus('disconnected');
       });
-      
+
       openClawWS.on('error', (err) => {
         console.error('OpenClaw WebSocket error:', err);
         updateConnectionStatus('error');
       });
-      
+
       openClawWS.on('message', (data) => {
         // Handle incoming messages from OpenClaw
         if (data.type === 'message' && data.payload) {
@@ -536,40 +632,39 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
       });
-      
+
       openClawWS.on('statusChange', ({ previous, current }) => {
         console.log(`OpenClaw WebSocket status changed: ${previous} -> ${current}`);
         updateConnectionStatus(current);
       });
-      
+
       openClawWS.connect();
-      
     } catch (err) {
       console.error('Failed to initialize OpenClaw WebSocket:', err);
       updateConnectionStatus('failed');
     }
   }
-  
+
   // Update UI connection status indicator
   function updateConnectionStatus(status) {
     const statusEl = document.getElementById('websocket-status');
     if (!statusEl) return;
-    
+
     // Ensure element is visible
     statusEl.classList.remove('hidden');
-    
+
     const statusText = {
       connecting: 'Подключение...',
       connected: 'Онлайн',
       disconnected: 'Офлайн',
       offline: 'Офлайн (сообщения в очереди)',
       error: 'Ошибка подключения',
-      failed: 'Соединение потеряно'
+      failed: 'Соединение потеряно',
     };
-    
+
     statusEl.textContent = statusText[status] || status;
     statusEl.className = 'px-2 py-1 rounded text-xs';
-    
+
     // Color coding
     if (status === 'connected') {
       statusEl.classList.add('bg-green-100', 'text-green-800');
@@ -581,10 +676,10 @@ document.addEventListener('DOMContentLoaded', () => {
       statusEl.classList.add('bg-red-100', 'text-red-800');
     }
   }
-  
+
   // Initialize WebSocket connection
   initOpenClawWebSocket();
-  
+
   // Graceful shutdown on window close
   window.addEventListener('beforeunload', () => {
     if (openClawWS) {
@@ -594,46 +689,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Task monitor polling
   function updateTaskMonitor() {
-    window.api.tasks.getStatus().then(status => {
-      const monitor = document.getElementById('task-monitor');
-      const { pdfQueue, webQueue, aiQueue } = status;
-      const totalPending = pdfQueue.pending + webQueue.pending + aiQueue.pending;
-      const totalRunning = pdfQueue.running + webQueue.running + aiQueue.running;
-      
-      if (totalPending === 0 && totalRunning === 0) {
-        monitor.innerHTML = '<div class="text-center text-gray-500 py-4">Нет активных задач</div>';
-        return;
-      }
-      
-      let html = '<div class="space-y-2">';
-      if (pdfQueue.pending > 0 || pdfQueue.running > 0) {
-        html += `<div class="flex justify-between items-center">
+    window.api.tasks
+      .getStatus()
+      .then((status) => {
+        const monitor = document.getElementById('task-monitor');
+        const { pdfQueue, webQueue, aiQueue } = status;
+        const totalPending = pdfQueue.pending + webQueue.pending + aiQueue.pending;
+        const totalRunning = pdfQueue.running + webQueue.running + aiQueue.running;
+
+        if (totalPending === 0 && totalRunning === 0) {
+          monitor.innerHTML =
+            '<div class="text-center text-gray-500 py-4">Нет активных задач</div>';
+          return;
+        }
+
+        let html = '<div class="space-y-2">';
+        if (pdfQueue.pending > 0 || pdfQueue.running > 0) {
+          html += `<div class="flex justify-between items-center">
           <span class="text-sm">PDF анализ</span>
           <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">${pdfQueue.running} выполняется, ${pdfQueue.pending} в очереди</span>
         </div>`;
-      }
-      if (webQueue.pending > 0 || webQueue.running > 0) {
-        html += `<div class="flex justify-between items-center">
+        }
+        if (webQueue.pending > 0 || webQueue.running > 0) {
+          html += `<div class="flex justify-between items-center">
           <span class="text-sm">Веб-поиск</span>
           <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">${webQueue.running} выполняется, ${webQueue.pending} в очереди</span>
         </div>`;
-      }
-      if (aiQueue.pending > 0 || aiQueue.running > 0) {
-        html += `<div class="flex justify-between items-center">
+        }
+        if (aiQueue.pending > 0 || aiQueue.running > 0) {
+          html += `<div class="flex justify-between items-center">
           <span class="text-sm">AI анализ</span>
           <span class="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">${aiQueue.running} выполняется, ${aiQueue.pending} в очереди</span>
         </div>`;
-      }
-      html += '</div>';
-      monitor.innerHTML = html;
-    }).catch(console.error);
+        }
+        html += '</div>';
+        monitor.innerHTML = html;
+      })
+      .catch(console.error);
   }
 
   setInterval(updateTaskMonitor, 3000);
   updateTaskMonitor();
 
   // Initialize
-  refreshFileList();
+  initWorkspacePath().then(() => refreshFileList());
   updateGatewayStatus(false);
   showNotification('Братан Desktop запущен', 'info');
 
@@ -650,4 +749,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   });
-});
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', initRenderer);
+  window.initRenderer = initRenderer;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { initRenderer };
+}

@@ -13,8 +13,6 @@ on:
         default: ''
 
 jobs:
-
-
   build-windows:
     runs-on: windows-latest
     env:
@@ -56,8 +54,6 @@ jobs:
         with:
           name: windows-artifacts
           path: artifacts-windows/
-
-
 
   release:
     runs-on: ubuntu-latest

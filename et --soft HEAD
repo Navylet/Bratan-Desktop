@@ -1,0 +1,153 @@
+* [33mcommit c196dbc1b75421d1c85787fb9c2c54e3ed931518[m[33m ([m[1;31morigin/dependabot/github_actions/actions/checkout-6[m[33m)[m
+[31m|[m Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[31m|[m Date:   Mon Mar 9 15:13:19 2026 +0000
+[31m|[m 
+[31m|[m     Bump actions/checkout from 4 to 6
+[31m|[m     
+[31m|[m     Bumps [actions/checkout](https://github.com/actions/checkout) from 4 to 6.
+[31m|[m     - [Release notes](https://github.com/actions/checkout/releases)
+[31m|[m     - [Changelog](https://github.com/actions/checkout/blob/main/CHANGELOG.md)
+[31m|[m     - [Commits](https://github.com/actions/checkout/compare/v4...v6)
+[31m|[m     
+[31m|[m     ---
+[31m|[m     updated-dependencies:
+[31m|[m     - dependency-name: actions/checkout
+[31m|[m       dependency-version: '6'
+[31m|[m       dependency-type: direct:production
+[31m|[m       update-type: version-update:semver-major
+[31m|[m     ...
+[31m|[m     
+[31m|[m     Signed-off-by: dependabot[bot] <support@github.com>
+[31m|[m   
+[31m|[m * [33mcommit b423eddb6f500a8ef8ac9414a40c6979d7093d05[m[33m ([m[1;31morigin/dependabot/github_actions/softprops/action-gh-release-2[m[33m)[m
+[31m|[m[31m/[m  Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[31m|[m   Date:   Mon Mar 9 15:13:14 2026 +0000
+[31m|[m   
+[31m|[m       Bump softprops/action-gh-release from 1 to 2
+[31m|[m       
+[31m|[m       Bumps [softprops/action-gh-release](https://github.com/softprops/action-gh-release) from 1 to 2.
+[31m|[m       - [Release notes](https://github.com/softprops/action-gh-release/releases)
+[31m|[m       - [Changelog](https://github.com/softprops/action-gh-release/blob/master/CHANGELOG.md)
+[31m|[m       - [Commits](https://github.com/softprops/action-gh-release/compare/v1...v2)
+[31m|[m       
+[31m|[m       ---
+[31m|[m       updated-dependencies:
+[31m|[m       - dependency-name: softprops/action-gh-release
+[31m|[m         dependency-version: '2'
+[31m|[m         dependency-type: direct:production
+[31m|[m         update-type: version-update:semver-major
+[31m|[m       ...
+[31m|[m       
+[31m|[m       Signed-off-by: dependabot[bot] <support@github.com>
+[31m|[m 
+* [33mcommit c43697db01b8143996ea0e2ff6c00ea3c238b46e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+[32m|[m Author: Dmitry Uzyanov <dmitry@example.com>
+[32m|[m Date:   Mon Mar 9 18:11:56 2026 +0300
+[32m|[m 
+[32m|[m     Allow release on workflow_dispatch with optional tag input
+[32m|[m     
+[32m|[m     - Add tag input to workflow_dispatch
+[32m|[m     - Modify release job condition to run on push tags or workflow_dispatch with non-empty tag
+[32m|[m     - Use tag_name from input or ref_name
+[32m|[m   
+[32m|[m * [33mcommit 1d2251be8bcf8c5418b356bfe9d738eb5ad8c958[m[33m ([m[1;31morigin/dependabot/github_actions/actions/upload-artifact-7[m[33m)[m
+[32m|[m[32m/[m  Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[32m|[m   Date:   Mon Mar 9 14:31:08 2026 +0000
+[32m|[m   
+[32m|[m       Bump actions/upload-artifact from 4 to 7
+[32m|[m       
+[32m|[m       Bumps [actions/upload-artifact](https://github.com/actions/upload-artifact) from 4 to 7.
+[32m|[m       - [Release notes](https://github.com/actions/upload-artifact/releases)
+[32m|[m       - [Commits](https://github.com/actions/upload-artifact/compare/v4...v7)
+[32m|[m       
+[32m|[m       ---
+[32m|[m       updated-dependencies:
+[32m|[m       - dependency-name: actions/upload-artifact
+[32m|[m         dependency-version: '7'
+[32m|[m         dependency-type: direct:production
+[32m|[m         update-type: version-update:semver-major
+[32m|[m       ...
+[32m|[m       
+[32m|[m       Signed-off-by: dependabot[bot] <support@github.com>
+[32m|[m   
+[32m|[m * [33mcommit 312c3512f9a07792f301aa555d6f118a11d1db09[m[33m ([m[1;31morigin/dependabot/github_actions/actions/cache-5[m[33m)[m
+[32m|[m[32m/[m  Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[32m|[m   Date:   Mon Mar 9 14:30:50 2026 +0000
+[32m|[m   
+[32m|[m       Bump actions/cache from 3 to 5
+[32m|[m       
+[32m|[m       Bumps [actions/cache](https://github.com/actions/cache) from 3 to 5.
+[32m|[m       - [Release notes](https://github.com/actions/cache/releases)
+[32m|[m       - [Changelog](https://github.com/actions/cache/blob/main/RELEASES.md)
+[32m|[m       - [Commits](https://github.com/actions/cache/compare/v3...v5)
+[32m|[m       
+[32m|[m       ---
+[32m|[m       updated-dependencies:
+[32m|[m       - dependency-name: actions/cache
+[32m|[m         dependency-version: '5'
+[32m|[m         dependency-type: direct:production
+[32m|[m         update-type: version-update:semver-major
+[32m|[m       ...
+[32m|[m       
+[32m|[m       Signed-off-by: dependabot[bot] <support@github.com>
+[32m|[m   
+[32m|[m * [33mcommit 1ad27a35ec4cd57ee5b17547cc0902f3518ea6e6[m[33m ([m[1;31morigin/dependabot/github_actions/actions/setup-node-6[m[33m)[m
+[32m|[m[32m/[m  Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[32m|[m   Date:   Mon Mar 9 14:30:49 2026 +0000
+[32m|[m   
+[32m|[m       Bump actions/setup-node from 4 to 6
+[32m|[m       
+[32m|[m       Bumps [actions/setup-node](https://github.com/actions/setup-node) from 4 to 6.
+[32m|[m       - [Release notes](https://github.com/actions/setup-node/releases)
+[32m|[m       - [Commits](https://github.com/actions/setup-node/compare/v4...v6)
+[32m|[m       
+[32m|[m       ---
+[32m|[m       updated-dependencies:
+[32m|[m       - dependency-name: actions/setup-node
+[32m|[m         dependency-version: '6'
+[32m|[m         dependency-type: direct:production
+[32m|[m         update-type: version-update:semver-major
+[32m|[m       ...
+[32m|[m       
+[32m|[m       Signed-off-by: dependabot[bot] <support@github.com>
+[32m|[m   
+[32m|[m * [33mcommit b8a6c968901db526debfb4ed433230890fec1457[m[33m ([m[1;31morigin/dependabot/github_actions/actions/download-artifact-8[m[33m)[m
+[32m|[m[32m/[m  Author: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>
+[32m|[m   Date:   Mon Mar 9 14:30:43 2026 +0000
+[32m|[m   
+[32m|[m       Bump actions/download-artifact from 4 to 8
+[32m|[m       
+[32m|[m       Bumps [actions/download-artifact](https://github.com/actions/download-artifact) from 4 to 8.
+[32m|[m       - [Release notes](https://github.com/actions/download-artifact/releases)
+[32m|[m       - [Commits](https://github.com/actions/download-artifact/compare/v4...v8)
+[32m|[m       
+[32m|[m       ---
+[32m|[m       updated-dependencies:
+[32m|[m       - dependency-name: actions/download-artifact
+[32m|[m         dependency-version: '8'
+[32m|[m         dependency-type: direct:production
+[32m|[m         update-type: version-update:semver-major
+[32m|[m       ...
+[32m|[m       
+[32m|[m       Signed-off-by: dependabot[bot] <support@github.com>
+[32m|[m 
+* [33mcommit a5fb10a380b88826554ed4972f1ad8d0c85fe8fe[m
+[36m|[m Author: Dmitry Uzyanov <dmitry@example.com>
+[36m|[m Date:   Mon Mar 9 17:29:31 2026 +0300
+[36m|[m 
+[36m|[m     CI: remove Linux and macOS builds, keep Windows only
+[36m|[m     
+[36m|[m     Linux and macOS builds are failing and blocking releases.
+[36m|[m     Keep only Windows build to allow successful releases.
+[36m|[m 
+* [33mcommit 9478753e581dc67c6b23baac31f1a8dcec5d7138[m
+[36m|[m Author: Dmitry Uzyanov <dmitry@example.com>
+[36m|[m Date:   Mon Mar 9 17:17:17 2026 +0300
+[36m|[m 
+[36m|[m     chore: add resolutions to reduce deprecated warnings
+[36m|[m 
+* [33mcommit 42ebfd208c4537efb837076de8d4bfea02c3a6c1[m
+[36m|[m Author: Dmitry Uzyanov <dmitry@example.com>
+[36m|[m Date:   Mon Mar 9 17:08:22 2026 +0300
+[36m|[m 
+[36m|[m     fix: remove AppImage target for Linux to avoid missing appimagetool

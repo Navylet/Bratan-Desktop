@@ -82,6 +82,7 @@ npm run test:e2e
 A GitHub Actions workflow (`.github/workflows/ci.yml`) is set up to run tests on push/pull request.
 
 **Steps:**
+
 1. Install Node.js and dependencies (`npm ci`)
 2. Run unit tests (`npm test`)
 3. Install Playwright browsers
