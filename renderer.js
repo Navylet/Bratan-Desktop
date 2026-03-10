@@ -1,6 +1,8 @@
 // Renderer process logic for Братан Desktop
 
 function initRenderer() {
+  window.api.log('info', 'Renderer initialized');
+
   // Tab switching
   const tabs = {
     'tab-chat': { title: 'Чат с Братаном', content: 'content-chat' },

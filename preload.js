@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('api', {
   removeOpenClawLogListener: () => {
     ipcRenderer.removeAllListeners('openclaw-log');
   },
+  log: (level, message) => {
+    ipcRenderer.send('renderer-log', { level, message });
+  },
+  getLogPath: () => ipcRenderer.invoke('get-log-path'),
   showNotification: ({ title, body }) => {
     ipcRenderer.invoke('show-notification', { title, body });
   },

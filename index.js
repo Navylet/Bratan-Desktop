@@ -7,11 +7,13 @@ const {
   Menu,
   Tray,
   globalShortcut,
+  dialog,
 } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const logger = require('./logger');
 const { GoogleIntegration } = require('./integrations/google');
 const { GitHubIntegration } = require('./integrations/github');
 
@@ -24,6 +26,20 @@ let tray = null;
 let taskManager = null;
 let googleIntegration = null;
 let githubIntegration = null;
+
+const appDataPath = app && typeof app.getPath === 'function' ? app.getPath('userData') : process.cwd();
+logger.init(appDataPath);
+logger.info('Main process starting...');
+
+process.on('uncaughtException', (err) => {
+  logger.error(`uncaughtException: ${err.stack || err.message}`);
+  dialog.showErrorBox('Critical Error', `Uncaught exception:\n${err.stack || err.message}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error(`unhandledRejection: ${reason}`);
+  dialog.showErrorBox('Unhandled Promise Rejection', `Unhandled rejection:\n${reason}`);
+});
 
 function toggleWindowVisibility(section) {
   if (!mainWindow) return;
@@ -52,7 +68,14 @@ function showWindow(section) {
   }
 }
 
-function createWindow() {
+function showError(title, message) {
+  logger.error(`${title}: ${message}`);
+  if (dialog && typeof dialog.showErrorBox === 'function') {
+    dialog.showErrorBox(title, message);
+  }
+}
+
+async function createWindow() {
   global.isQuitting = false;
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -67,16 +90,46 @@ function createWindow() {
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     title: 'Братан Desktop',
-    show: false,
+    show: true,
   });
 
   // Load the index.html
-  mainWindow.loadFile('index.html');
+  try {
+    await mainWindow.loadFile('index.html');
+    logger.info('index.html loaded');
+  } catch (err) {
+    logger.error('Failed to load index.html: ' + err.message);
+    showError('Загрузка UI не удалась', `Не удалось открыть index.html:\n${err.message}`);
+  }
 
-  // Show when ready
+  // Show when ready (and also protect from failure-to-show)
   mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    // Check for updates, notifications, etc.
+    logger.info('Window ready-to-show');
+    if (!mainWindow.isVisible()) mainWindow.show();
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    logger.info('WebContents did-finish-load');
+    if (!mainWindow.isVisible()) mainWindow.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    const message = `Не удалось загрузить интерфейс (${errorCode}: ${errorDescription}) ${validatedURL}`;
+    logger.error(message);
+    showError('Ошибка загрузки интерфейса', message);
+    if (!mainWindow.isVisible()) mainWindow.show();
+  });
+
+  mainWindow.webContents.on('crashed', () => {
+    const err = 'WebContents crashed';
+    logger.error(err);
+    showError('Сбой рендерера', err);
+    if (!mainWindow.isVisible()) mainWindow.show();
+  });
+
+  mainWindow.on('unresponsive', () => {
+    logger.warn('Window is unresponsive');
+    // Don't hide. Keep visible to user and set a message in UI if needed.
   });
 
   // Open DevTools (remove in production)
@@ -274,7 +327,7 @@ function startOpenClawGateway() {
     if (mainWindow) {
       mainWindow.webContents.send('openclaw-log', { type: 'stdout', message });
     }
-    console.log('OpenClaw stdout:', message);
+    logger.info('OpenClaw stdout: ' + message);
   });
 
   openclawProcess.stderr.on('data', (data) => {
@@ -282,7 +335,7 @@ function startOpenClawGateway() {
     if (mainWindow) {
       mainWindow.webContents.send('openclaw-log', { type: 'stderr', message });
     }
-    console.error('OpenClaw stderr:', message);
+    logger.error('OpenClaw stderr: ' + message);
   });
 
   openclawProcess.on('close', (code) => {
@@ -402,7 +455,7 @@ ipcMain.handle('openclaw-get-messages', async () => {
       }
 
       if (stderr && !stderr.toLowerCase().includes('warning')) {
-        console.warn('OpenClaw history stderr:', stderr);
+        logger.warn('OpenClaw history stderr: ' + stderr);
       }
 
       let messages = [];
@@ -418,7 +471,7 @@ ipcMain.handle('openclaw-get-messages', async () => {
           }));
         }
       } catch (parseErr) {
-        console.warn('Failed to parse messages JSON:', parseErr);
+        logger.warn('Failed to parse messages JSON: ' + parseErr.message);
       }
 
       resolve({ messages });
@@ -541,29 +594,57 @@ ipcMain.handle('github-recent-commits', (event, owner, repo, branch, perPage) =>
   return githubIntegration.getRecentCommits(owner, repo, branch, perPage);
 });
 
-// App lifecycle
-app.whenReady().then(() => {
-  // Initialize managers
-  const { HeavyTaskManager } = require('./taskManager');
-  taskManager = new HeavyTaskManager();
-
-  googleIntegration = new GoogleIntegration();
-  githubIntegration = new GitHubIntegration();
-
-  // Try to load saved tokens
-  loadIntegrations();
-
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+if (ipcMain && typeof ipcMain.on === 'function') {
+  ipcMain.on('renderer-log', (event, { level, message }) => {
+    if (level && logger[level]) {
+      logger[level](`[renderer] ${message}`);
+    } else {
+      logger.info(`[renderer] ${message}`);
     }
   });
+}
 
-  // Auto-start gateway (optional)
-  // startOpenClawGateway();
+if (ipcMain && typeof ipcMain.handle === 'function') {
+  ipcMain.handle('get-log-path', () => {
+    return logger.getLogFilePath();
+  });
+}
+
+// App lifecycle
+if (!process.env.JEST_WORKER_ID && app && typeof app.whenReady === 'function') {
+  app.whenReady().then(async () => {
+  try {
+    logger.info('App is ready, initializing');
+
+    // Initialize managers
+    const { HeavyTaskManager } = require('./taskManager');
+    taskManager = new HeavyTaskManager();
+
+    googleIntegration = new GoogleIntegration();
+    githubIntegration = new GitHubIntegration();
+
+    // Try to load saved tokens
+    await loadIntegrations();
+
+    await createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+
+    // Auto-start gateway (optional)
+    // startOpenClawGateway();
+  } catch (err) {
+    logger.error('Error in app ready handler: ' + err.stack);
+    showError('Startup Error', `${err.message}\n${err.stack}`);
+  }
+}).catch((err) => {
+  logger.error('app.whenReady() rejected: ' + err.stack);
+  showError('Critical startup error', `${err.message}\n${err.stack}`);
 });
+}
 
 async function loadIntegrations() {
   // Try to load GitHub token
@@ -574,7 +655,7 @@ async function loadIntegrations() {
       await githubIntegration.initialize(data.token);
     }
   } catch (err) {
-    console.log('GitHub token not loaded:', err.message);
+    logger.warn('GitHub token not loaded: ' + err.message);
   }
 
   // Google requires OAuth flow, will be initialized on demand
