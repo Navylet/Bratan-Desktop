@@ -1,11 +1,20 @@
 // Интеграция с Google API (Drive, Docs, Calendar, Gmail)
-const { google } = require('googleapis');
+let google = null;
 const fs = require('fs').promises;
 const path = require('path');
+
+async function getGoogle() {
+  if (google) return google;
+  const googleModule = await import('googleapis');
+  google = googleModule.google || googleModule.default?.google || googleModule.default || googleModule;
+  if (!google) throw new Error('Не удалось загрузить googleapis');
+  return google;
+}
 
 class GoogleIntegration {
   constructor() {
     this.oauth2Client = null;
+    this.google = null;
     this.drive = null;
     this.docs = null;
     this.calendar = null;
@@ -22,7 +31,9 @@ class GoogleIntegration {
 
   // Инициализация клиента OAuth
   async initialize(clientId, clientSecret, redirectUri) {
-    this.oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    const g = await getGoogle();
+    this.google = g;
+    this.oauth2Client = new g.auth.OAuth2(clientId, clientSecret, redirectUri);
 
     // Пробуем загрузить сохранённые токены
     try {
@@ -62,10 +73,11 @@ class GoogleIntegration {
 
   // Создание сервисов Google
   async createServices() {
-    this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
-    this.docs = google.docs({ version: 'v1', auth: this.oauth2Client });
-    this.calendar = google.calendar({ version: 'v3', auth: this.oauth2Client });
-    this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+    const g = this.google || (await getGoogle());
+    this.drive = g.drive({ version: 'v3', auth: this.oauth2Client });
+    this.docs = g.docs({ version: 'v1', auth: this.oauth2Client });
+    this.calendar = g.calendar({ version: 'v3', auth: this.oauth2Client });
+    this.gmail = g.gmail({ version: 'v1', auth: this.oauth2Client });
   }
 
   // Получить список файлов с Google Drive

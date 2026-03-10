@@ -1,7 +1,15 @@
 // Интеграция с GitHub API
-const { Octokit } = require('@octokit/rest');
+let Octokit = null;
 const fs = require('fs').promises;
 const path = require('path');
+
+async function getOctokit() {
+  if (Octokit) return Octokit;
+  const module = await import('@octokit/rest');
+  Octokit = module.Octokit || module.default?.Octokit || module.default || module;
+  if (!Octokit) throw new Error('Не удалось загрузить Octokit');
+  return Octokit;
+}
 
 class GitHubIntegration {
   constructor() {
@@ -11,8 +19,9 @@ class GitHubIntegration {
 
   // Инициализация с токеном
   async initialize(token) {
+    const Oct = await getOctokit();
     if (token) {
-      this.octokit = new Octokit({ auth: token });
+      this.octokit = new Oct({ auth: token });
       await this.saveToken(token);
       return { initialized: true };
     }
@@ -20,7 +29,7 @@ class GitHubIntegration {
     // Пробуем загрузить сохранённый токен
     try {
       const saved = JSON.parse(await fs.readFile(this.tokenPath, 'utf8'));
-      this.octokit = new Octokit({ auth: saved.token });
+      this.octokit = new Oct({ auth: saved.token });
       return { initialized: true };
     } catch (err) {
       return { initialized: false, needAuth: true };
