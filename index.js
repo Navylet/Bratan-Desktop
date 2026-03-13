@@ -1372,6 +1372,44 @@ async function importRagIndex(options = {}) {
   };
 }
 
+let cachedWslOpenClawCommand = null;
+
+function detectWslOpenClawCommand() {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  if (cachedWslOpenClawCommand) {
+    return cachedWslOpenClawCommand;
+  }
+
+  const probes = [
+    'command -v openclaw 2>/dev/null',
+    '[ -x "$HOME/.local/bin/openclaw" ] && printf "%s" "$HOME/.local/bin/openclaw"',
+    '[ -x "/usr/local/bin/openclaw" ] && printf "%s" "/usr/local/bin/openclaw"',
+  ];
+
+  for (const probe of probes) {
+    try {
+      const resolved = execFileSync('wsl', ['sh', '-lc', probe], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+
+      if (!resolved) {
+        continue;
+      }
+
+      cachedWslOpenClawCommand = `wsl ${resolved}`;
+      return cachedWslOpenClawCommand;
+    } catch {
+      // try next probe
+    }
+  }
+
+  return null;
+}
+
 function resolveOpenClawCommand(preferredCommand) {
   const envCmd =
     preferredCommand ||
@@ -1448,9 +1486,17 @@ function resolveOpenClawCommand(preferredCommand) {
     }
   }
 
+  if (process.platform === 'win32') {
+    const wslCommand = detectWslOpenClawCommand();
+    if (wslCommand) {
+      logger.info(`OpenClaw resolved via WSL auto-detect: ${wslCommand}`);
+      return wslCommand;
+    }
+  }
+
   // Не найден; возвращаем ошибку с подсказкой.
   throw new Error(
-    `OpenClaw не найден. Установите openclaw и добавьте в PATH или установите OPENCLAW_PATH. Попытки: ${candidates.join(', ')}`
+    `OpenClaw не найден. Установите openclaw и добавьте в PATH, или задайте OPENCLAW_PATH (например: wsl /home/<user>/.local/bin/openclaw). Попытки: ${candidates.join(', ')}`
   );
 }
 

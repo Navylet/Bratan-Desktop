@@ -1197,7 +1197,7 @@ function initRenderer() {
     const savedNotifications = localStorage.getItem('openclaw_notifications') !== 'false';
     const savedSound = localStorage.getItem('openclaw_sound') !== 'false';
     const savedGatewayPort = Number(localStorage.getItem('openclaw_gateway_port')) || 18789;
-    const savedCliPath = localStorage.getItem('openclaw_cli_path') || 'openclaw';
+    const savedCliPath = localStorage.getItem('openclaw_cli_path') ?? '';
     const savedChatAgentId = localStorage.getItem('openclaw_chat_agent_id') || '';
     const savedChatSessionId = localStorage.getItem('openclaw_chat_session_id') || 'bratan-desktop-ui';
     const savedChatThinking = localStorage.getItem('openclaw_chat_thinking') || 'medium';
@@ -1267,7 +1267,7 @@ function initRenderer() {
     document.getElementById('setting-notifications').checked = true;
     document.getElementById('setting-sound').checked = true;
     document.getElementById('setting-theme').value = 'light';
-    document.getElementById('setting-cli-path').value = 'openclaw';
+    document.getElementById('setting-cli-path').value = '';
     document.getElementById('setting-gateway-port').value = '18789';
 
     localStorage.removeItem('openclaw_font_size');
