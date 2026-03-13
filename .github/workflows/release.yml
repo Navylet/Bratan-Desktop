@@ -45,7 +45,7 @@ jobs:
     steps:
       - name: Create GitHub Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
@@ -60,7 +60,7 @@ jobs:
           path: artifacts-linux
 
       - name: Upload Linux artifacts
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: artifacts-linux/**
         env:
@@ -73,7 +73,7 @@ jobs:
           path: artifacts-windows
 
       - name: Upload Windows artifacts
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: artifacts-windows/**
         env:
