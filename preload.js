@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   fs: {
     listDir: (path) => ipcRenderer.invoke('fs-list-dir', path),
     openFolder: (path) => ipcRenderer.invoke('open-folder', path),
+    openFile: (path) => ipcRenderer.invoke('open-file-default', path),
     readFile: (path) => ipcRenderer.invoke('fs-read-file', path),
     writeFile: (path, content) => ipcRenderer.invoke('fs-write-file', path, content),
   },

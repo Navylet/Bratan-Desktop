@@ -23,6 +23,8 @@
     .typing-dot { display: inline-block; width: 6px; height: 6px; margin-left: 3px; border-radius: 9999px; background: #4f46e5; animation: typingPulse 1s infinite ease-in-out; }
     .typing-dot:nth-child(2) { animation-delay: 0.15s; }
     .typing-dot:nth-child(3) { animation-delay: 0.3s; }
+    .tab-content { min-height: 0; overflow-y: auto; }
+    .file-item-active { @apply bg-blue-50 border-blue-200; }
     @keyframes typingPulse {
       0%, 100% { transform: translateY(0); opacity: 0.35; }
       50% { transform: translateY(-2px); opacity: 1; }
@@ -47,9 +49,6 @@
         </button>
         <button id="tab-files" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900" role="tab" aria-controls="content-files" aria-label="Файлы" aria-selected="false">
           <i class="fas fa-folder-open sidebar-icon"></i>
-        </button>
-        <button id="tab-editor" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900" role="tab" aria-controls="content-editor" aria-label="Редактор" aria-selected="false">
-          <i class="fas fa-edit sidebar-icon"></i>
         </button>
         <button id="tab-agents" class="sidebar-tab p-2 rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900" role="tab" aria-controls="content-agents" aria-label="Агенты" aria-selected="false">
           <i class="fas fa-users sidebar-icon"></i>
@@ -105,7 +104,7 @@
       </div>
 
       <!-- Tab Content -->
-      <div class="flex-1 overflow-hidden">
+      <div class="flex-1 min-h-0">
         <!-- Chat Tab -->
         <div id="content-chat" class="tab-content h-full flex flex-col p-4" role="tabpanel" aria-labelledby="tab-chat">
           <div class="flex-1 overflow-y-auto mb-4 space-y-4" id="chat-messages" aria-live="polite" aria-atomic="false">
@@ -187,38 +186,30 @@
         </div>
 
         <!-- Files Tab -->
-        <div id="content-files" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-files">
+        <div id="content-files" class="tab-content h-full min-h-0 flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-files">
           <div class="flex justify-between items-center mb-4">
             <h2 class="text-lg font-semibold">Файлы рабочего пространства</h2>
             <div class="flex space-x-2">
+              <button id="btn-files-home" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded" title="Корень workspace">
+                <i class="fas fa-house mr-1"></i> Корень
+              </button>
+              <button id="btn-files-up" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded" title="На уровень выше">
+                <i class="fas fa-level-up-alt mr-1"></i> Вверх
+              </button>
               <button id="btn-refresh-files" class="text-sm bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded">
                 <i class="fas fa-sync-alt mr-1"></i> Обновить
               </button>
-              <button id="btn-open-workspace" class="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded">
-                <i class="fas fa-folder-open mr-1"></i> Открыть папку
-              </button>
             </div>
           </div>
-          <div class="flex-1 overflow-y-auto bg-white border rounded-lg p-4" id="file-list">
-            <div class="file-item flex items-center p-3 border-b cursor-pointer">
-              <i class="fas fa-file-alt text-gray-500 mr-3"></i>
-              <div class="flex-1">
-                <div class="font-medium">MEMORY.md</div>
-                <div class="text-sm text-gray-700">Долговременная память ассистента</div>
-              </div>
-              <div class="text-xs text-gray-700">2 КБ</div>
-            </div>
-            <div class="file-item flex items-center p-3 border-b cursor-pointer">
-              <i class="fas fa-folder text-yellow-500 mr-3"></i>
-              <div class="flex-1">
-                <div class="font-medium">knowledge</div>
-                <div class="text-sm text-gray-700">База знаний GIGA ARPA</div>
-              </div>
-              <div class="text-xs text-gray-700">—</div>
-            </div>
+          <div class="text-sm text-gray-700 mb-2">
+            <span class="font-medium">Текущая папка:</span> <span id="files-current-path" class="break-all"></span>
+          </div>
+          <div id="files-breadcrumbs" class="text-xs text-gray-600 mb-3 flex flex-wrap gap-2"></div>
+          <div class="flex-1 min-h-0 overflow-y-auto bg-white border rounded-lg p-2" id="file-list">
+            <div class="text-center text-gray-500 py-4">Загрузка файлов...</div>
           </div>
           <div class="mt-4 text-sm text-gray-700">
-            <i class="fas fa-info-circle mr-1"></i> Рабочая папка: <code id="workspace-path">~/.openclaw/workspace</code>. Для редактирования файла — кликните дважды.
+            <i class="fas fa-info-circle mr-1"></i> Рабочая папка: <code id="workspace-path">~/.openclaw/workspace</code>. Навигация выполняется внутри приложения; двойной клик по файлу откроет его в приложении Windows по умолчанию.
           </div>
         </div>
 
@@ -340,9 +331,9 @@
         </div>
 
         <!-- Integrations Tab -->
-        <div id="content-integrations" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-integrations">
+        <div id="content-integrations" class="tab-content h-full min-h-0 flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-integrations">
           <h2 class="text-lg font-semibold mb-4">Интеграции</h2>
-          <div class="space-y-6 max-w-4xl">
+          <div class="space-y-6 max-w-4xl flex-1 min-h-0 overflow-y-auto pr-1">
             <!-- Google Integration -->
             <div class="bg-white border rounded-lg p-4">
               <h3 class="font-semibold mb-3 flex items-center">
@@ -472,59 +463,10 @@
           </div>
         </div>
 
-        <!-- Editor Tab -->
-        <div id="content-editor" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-editor">
-          <div class="flex justify-between items-center mb-4">
-            <h2 class="text-lg font-semibold">Редактор файлов</h2>
-            <div class="flex space-x-2">
-              <button id="editor-save" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded" disabled>
-                <i class="fas fa-save mr-2"></i> Сохранить
-              </button>
-              <button id="editor-close" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded">
-                <i class="fas fa-times mr-2"></i> Закрыть
-              </button>
-            </div>
-          </div>
-          <div class="flex flex-col flex-1">
-            <div class="flex items-center mb-2">
-              <span class="font-medium text-gray-700 mr-4">Файл:</span>
-              <span id="editor-filename" class="text-gray-900 flex-1">Не выбран</span>
-              <select id="editor-theme" class="border rounded px-3 py-1 text-sm">
-                <option value="light">Светлая</option>
-                <option value="dark" selected>Тёмная</option>
-                <option value="one-dark">One Dark</option>
-              </select>
-            </div>
-            <div id="editor-container" class="flex-1 border rounded-lg overflow-hidden">
-              <textarea id="editor-fallback" class="w-full h-full p-4 font-mono" placeholder="Выберите файл для редактирования..."></textarea>
-            </div>
-            <div class="mt-2 text-sm text-gray-700 flex justify-between">
-              <div>
-                Синтаксис: 
-                <select id="editor-language" class="border rounded px-2 py-1 ml-2">
-                  <option value="auto">Авто</option>
-                  <option value="javascript">JavaScript</option>
-                  <option value="typescript">TypeScript</option>
-                  <option value="html">HTML</option>
-                  <option value="css">CSS</option>
-                  <option value="python">Python</option>
-                  <option value="json">JSON</option>
-                  <option value="markdown">Markdown</option>
-                  <option value="xml">XML</option>
-                  <option value="yaml">YAML</option>
-                </select>
-              </div>
-              <div>
-                <span id="editor-status">Готов</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Settings Tab -->
-        <div id="content-settings" class="tab-content h-full flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-settings">
+        <div id="content-settings" class="tab-content h-full min-h-0 flex flex-col p-4 hidden" role="tabpanel" aria-labelledby="tab-settings">
           <h2 class="text-lg font-semibold mb-4">Настройки</h2>
-          <div class="space-y-6 max-w-2xl">
+          <div class="space-y-6 max-w-2xl flex-1 min-h-0 overflow-y-auto pr-1">
             <div class="bg-white border rounded-lg p-4">
               <h3 class="font-semibold mb-3 flex items-center">
                 <i class="fas fa-server mr-2"></i> Настройки OpenClaw

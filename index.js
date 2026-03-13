@@ -559,6 +559,20 @@ const TEXT_FILE_EXTENSIONS = new Set([
   '.log',
 ]);
 
+const OFFICE_DOCUMENT_EXTENSIONS = new Set([
+  '.docx',
+  '.doc',
+  '.xlsx',
+  '.xls',
+  '.pptx',
+  '.ppt',
+  '.pdf',
+  '.rtf',
+  '.odt',
+  '.ods',
+  '.odp',
+]);
+
 function detectMimeTypeByExtension(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const mimeMap = {
@@ -576,6 +590,12 @@ function detectMimeTypeByExtension(filePath) {
     '.yaml': 'text/yaml',
     '.csv': 'text/csv',
     '.py': 'text/x-python',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.ppt': 'application/vnd.ms-powerpoint',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     '.pdf': 'application/pdf',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
@@ -587,6 +607,69 @@ function detectMimeTypeByExtension(filePath) {
 
 function isTextFileExtension(filePath) {
   return TEXT_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+let officeParserModule = null;
+
+async function getOfficeParserModule() {
+  if (officeParserModule) return officeParserModule;
+
+  const imported = await import('officeparser');
+  officeParserModule = imported?.parseOffice
+    ? imported
+    : imported?.default?.parseOffice
+      ? imported.default
+      : null;
+
+  if (!officeParserModule || typeof officeParserModule.parseOffice !== 'function') {
+    throw new Error('Не удалось загрузить officeparser');
+  }
+
+  return officeParserModule;
+}
+
+async function extractOfficeDocumentText(filePath, ext) {
+  try {
+    const parser = await getOfficeParserModule();
+    const ast = await parser.parseOffice(filePath, {
+      ignoreNotes: true,
+      newlineDelimiter: '\n',
+      outputErrorToConsole: false,
+      toText: false,
+    });
+
+    if (ast && typeof ast.toText === 'function') {
+      const text = String(ast.toText() || '').trim();
+      if (text) {
+        return {
+          text,
+          extraction: `officeparser:${ext.replace('.', '')}`,
+        };
+      }
+    }
+  } catch (err) {
+    logger.warn(`Office extraction failed for ${filePath}: ${err.message}`);
+  }
+
+  if (ext === '.pdf' && taskManager && typeof taskManager.analyzePDF === 'function') {
+    try {
+      const pdfData = await taskManager.analyzePDF(filePath, { pages: '1-20', ocr: false });
+      const text = String(pdfData.rawText || '').trim();
+      if (text) {
+        return {
+          text,
+          extraction: 'pdf-task-manager',
+        };
+      }
+    } catch (err) {
+      logger.warn(`PDF fallback extraction failed for ${filePath}: ${err.message}`);
+    }
+  }
+
+  return {
+    text: '',
+    extraction: `unsupported:${ext.replace('.', '')}`,
+  };
 }
 
 function getRagStorePath() {
@@ -690,14 +773,10 @@ async function readFileForContext(filePath, options = {}) {
   let content = '';
   let extraction = 'none';
 
-  if (ext === '.pdf' && taskManager && typeof taskManager.analyzePDF === 'function') {
-    try {
-      const pdfData = await taskManager.analyzePDF(resolved, { pages: '1-5', ocr: false });
-      content = String(pdfData.rawText || '');
-      extraction = 'pdf';
-    } catch (err) {
-      logger.warn(`PDF extraction failed for ${resolved}: ${err.message}`);
-    }
+  if (OFFICE_DOCUMENT_EXTENSIONS.has(ext)) {
+    const officePayload = await extractOfficeDocumentText(resolved, ext);
+    content = String(officePayload.text || '');
+    extraction = officePayload.extraction;
   }
 
   if (!content && isTextFileExtension(resolved)) {
@@ -2040,6 +2119,15 @@ if (ipcMain && typeof ipcMain.handle === 'function') {
   safeHandle('open-folder', (event, folderPath) => {
     const { resolved } = ensurePathInWorkspace(folderPath);
     shell.openPath(resolved);
+  });
+
+  safeHandle('open-file-default', async (event, filePath) => {
+    const { resolved } = ensurePathInWorkspace(filePath);
+    const errorMessage = await shell.openPath(resolved);
+    if (errorMessage) {
+      throw new Error(errorMessage);
+    }
+    return { success: true };
   });
 
   safeHandle('fs-read-file', async (event, filePath) => {

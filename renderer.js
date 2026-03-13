@@ -8,7 +8,6 @@ function initRenderer() {
     'tab-chat': { title: 'Чат с Братаном', content: 'content-chat' },
     'tab-logs': { title: 'Логи агентов', content: 'content-logs' },
     'tab-files': { title: 'Файлы рабочего пространства', content: 'content-files' },
-    'tab-editor': { title: 'Редактор файлов', content: 'content-editor' },
     'tab-agents': { title: 'Активные агенты', content: 'content-agents' },
     'tab-rag': { title: 'RAG Studio', content: 'content-rag' },
     'tab-integrations': { title: 'Интеграции', content: 'content-integrations' },
@@ -170,20 +169,119 @@ function initRenderer() {
   // Files handling
   const fileList = document.getElementById('file-list');
   const workspacePath = document.getElementById('workspace-path');
+  const filesCurrentPath = document.getElementById('files-current-path');
+  const filesBreadcrumbs = document.getElementById('files-breadcrumbs');
+  const btnFilesHome = document.getElementById('btn-files-home');
+  const btnFilesUp = document.getElementById('btn-files-up');
+
+  let workspaceRootPath = '';
+  let currentDirectory = '';
+
+  function normalizeFsPath(value) {
+    return String(value || '').replace(/[\\/]+$/, '');
+  }
+
+  function pathsEqual(left, right) {
+    return normalizeFsPath(left).toLowerCase() === normalizeFsPath(right).toLowerCase();
+  }
+
+  function isPathInsideWorkspace(candidatePath) {
+    const root = normalizeFsPath(workspaceRootPath).toLowerCase();
+    const candidate = normalizeFsPath(candidatePath).toLowerCase();
+    return candidate === root || candidate.startsWith(`${root}\\`) || candidate.startsWith(`${root}/`);
+  }
+
+  function getParentDirectory(targetPath) {
+    const normalized = normalizeFsPath(targetPath);
+    if (!normalized || pathsEqual(normalized, workspaceRootPath)) {
+      return normalizeFsPath(workspaceRootPath);
+    }
+
+    const parent = normalized.replace(/[\\/][^\\/]+$/, '');
+    if (!parent || !isPathInsideWorkspace(parent)) {
+      return normalizeFsPath(workspaceRootPath);
+    }
+
+    return normalizeFsPath(parent);
+  }
+
+  function setCurrentDirectory(targetPath) {
+    currentDirectory = normalizeFsPath(targetPath || workspaceRootPath);
+
+    if (filesCurrentPath) {
+      filesCurrentPath.textContent = currentDirectory;
+    }
+
+    if (btnFilesUp) {
+      btnFilesUp.disabled = pathsEqual(currentDirectory, workspaceRootPath);
+      btnFilesUp.classList.toggle('opacity-50', btnFilesUp.disabled);
+      btnFilesUp.classList.toggle('cursor-not-allowed', btnFilesUp.disabled);
+    }
+
+    renderFileBreadcrumbs();
+  }
+
+  function renderFileBreadcrumbs() {
+    if (!filesBreadcrumbs) return;
+
+    const root = normalizeFsPath(workspaceRootPath);
+    const current = normalizeFsPath(currentDirectory || workspaceRootPath);
+    const rel = current.toLowerCase().startsWith(root.toLowerCase())
+      ? current.slice(root.length)
+      : '';
+    const segments = rel.split(/[\\/]+/).filter(Boolean);
+
+    const crumbs = [
+      `<button class="text-blue-600 hover:underline" data-fs-crumb="${escapeHtml(root)}">workspace</button>`,
+    ];
+
+    let accum = root;
+    segments.forEach((segment) => {
+      accum = `${accum}\\${segment}`;
+      crumbs.push('<span class="text-gray-400">/</span>');
+      crumbs.push(`<button class="text-blue-600 hover:underline" data-fs-crumb="${escapeHtml(accum)}">${escapeHtml(segment)}</button>`);
+    });
+
+    filesBreadcrumbs.innerHTML = crumbs.join(' ');
+    filesBreadcrumbs.querySelectorAll('[data-fs-crumb]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.getAttribute('data-fs-crumb');
+        if (!target) return;
+        void refreshFileList(target);
+      });
+    });
+  }
+
+  async function openFileWithDefaultApp(filePath) {
+    try {
+      await window.api.fs.openFile(filePath);
+      showNotification(`Открыт файл: ${filePath}`, 'success');
+    } catch (err) {
+      showNotification('Ошибка открытия файла: ' + err.message, 'error');
+    }
+  }
 
   async function initWorkspacePath() {
     try {
       const wsPath = await window.api.getWorkspacePath();
       workspacePath.textContent = wsPath;
+      workspaceRootPath = normalizeFsPath(wsPath);
+      setCurrentDirectory(workspaceRootPath);
     } catch (err) {
       workspacePath.textContent = '~/.openclaw/workspace';
       console.warn('Не удалось получить путь рабочей папки:', err);
+      workspaceRootPath = normalizeFsPath('~/.openclaw/workspace');
+      setCurrentDirectory(workspaceRootPath);
     }
   }
 
-  async function refreshFileList() {
+  async function refreshFileList(targetPath) {
+    const nextPath = normalizeFsPath(targetPath || currentDirectory || workspaceRootPath || workspacePath.textContent);
+    if (!nextPath) return;
+
     try {
-      const entries = await window.api.fs.listDir(workspacePath.textContent);
+      setCurrentDirectory(nextPath);
+      const entries = await window.api.fs.listDir(nextPath);
       if (!entries.length) {
         fileList.innerHTML = '<div class="text-center text-gray-500 py-4">Рабочая папка пуста</div>';
         return;
@@ -205,7 +303,7 @@ function initRenderer() {
               : `${Math.max(1, Math.round(entry.size / 1024))} КБ`;
 
           return `
-            <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${entry.path}" data-is-directory="${entry.isDirectory}">
+            <div class="file-item flex items-center p-3 border-b rounded cursor-pointer" data-file-path="${entry.path}" data-is-directory="${entry.isDirectory}">
               <i class="${iconClass} mr-3"></i>
               <div class="flex-1 min-w-0">
                 <div class="font-medium truncate">${entry.name}</div>
@@ -219,16 +317,21 @@ function initRenderer() {
 
       fileList.querySelectorAll('.file-item').forEach((item) => {
         item.addEventListener('click', () => {
+          fileList.querySelectorAll('.file-item').forEach((node) => node.classList.remove('file-item-active'));
+          item.classList.add('file-item-active');
+        });
+
+        item.addEventListener('dblclick', () => {
           const entryPath = item.dataset.filePath;
           const isDirectory = item.dataset.isDirectory === 'true';
           if (!entryPath) return;
 
           if (isDirectory) {
-            window.api.fs.openFolder(entryPath);
+            void refreshFileList(entryPath);
             return;
           }
 
-          openFileInEditor(entryPath);
+          void openFileWithDefaultApp(entryPath);
         });
       });
     } catch (err) {
@@ -237,10 +340,22 @@ function initRenderer() {
     }
   }
 
-  document.getElementById('btn-refresh-files').addEventListener('click', refreshFileList);
-  document.getElementById('btn-open-workspace').addEventListener('click', () => {
-    window.api.fs.openFolder(workspacePath.textContent);
+  document.getElementById('btn-refresh-files').addEventListener('click', () => {
+    void refreshFileList(currentDirectory);
   });
+
+  if (btnFilesHome) {
+    btnFilesHome.addEventListener('click', () => {
+      void refreshFileList(workspaceRootPath);
+    });
+  }
+
+  if (btnFilesUp) {
+    btnFilesUp.addEventListener('click', () => {
+      const parent = getParentDirectory(currentDirectory);
+      void refreshFileList(parent);
+    });
+  }
 
   // Chat functionality
   const chatInput = document.getElementById('chat-input');
@@ -1579,134 +1694,6 @@ function initRenderer() {
     }
   });
 
-  // File editor
-  let codeEditor = null;
-  let currentEditorFile = null;
-
-  function initCodeEditor() {
-    if (codeEditor) return;
-
-    const textarea = document.getElementById('editor-fallback');
-    codeEditor = CodeMirror.fromTextArea(textarea, {
-      lineNumbers: true,
-      mode: 'javascript',
-      theme: 'dracula',
-      indentUnit: 2,
-      tabSize: 2,
-      lineWrapping: true,
-      autoCloseBrackets: true,
-      matchBrackets: true,
-      extraKeys: {
-        'Ctrl-S': saveEditorFile,
-        'Cmd-S': saveEditorFile,
-      },
-    });
-
-    codeEditor.on('change', () => {
-      document.getElementById('editor-save').disabled = false;
-      updateEditorStatus('Изменения не сохранены');
-    });
-
-    // Theme selector
-    document.getElementById('editor-theme').addEventListener('change', (e) => {
-      const theme = e.target.value;
-      let cmTheme = 'default';
-      if (theme === 'dark') cmTheme = 'dracula';
-      else if (theme === 'one-dark') cmTheme = 'dracula';
-      else if (theme === 'light') cmTheme = 'eclipse';
-      codeEditor.setOption('theme', cmTheme);
-    });
-
-    // Language selector
-    document.getElementById('editor-language').addEventListener('change', (e) => {
-      const lang = e.target.value;
-      codeEditor.setOption('mode', lang === 'auto' ? null : lang);
-    });
-
-    // Save button
-    document.getElementById('editor-save').addEventListener('click', saveEditorFile);
-
-    // Close button
-    document.getElementById('editor-close').addEventListener('click', () => {
-      if (
-        document.getElementById('editor-save').disabled ||
-        confirm('Есть несохранённые изменения. Закрыть без сохранения?')
-      ) {
-        resetEditor();
-      }
-    });
-
-    updateEditorStatus('Редактор готов');
-  }
-
-  function updateEditorStatus(text) {
-    document.getElementById('editor-status').textContent = text;
-  }
-
-  function resetEditor() {
-    codeEditor.setValue('');
-    document.getElementById('editor-filename').textContent = 'Не выбран';
-    document.getElementById('editor-save').disabled = true;
-    currentEditorFile = null;
-    updateEditorStatus('Готов');
-  }
-
-  async function openFileInEditor(filePath) {
-    try {
-      const content = await window.api.fs.readFile(filePath); // Need to add this IPC
-      if (codeEditor) {
-        codeEditor.setValue(content);
-        currentEditorFile = filePath;
-        document.getElementById('editor-filename').textContent = filePath;
-        document.getElementById('editor-save').disabled = true;
-
-        // Auto-detect language
-        const ext = filePath.split('.').pop().toLowerCase();
-        const langMap = {
-          js: 'javascript',
-          ts: 'javascript',
-          jsx: 'javascript',
-          py: 'python',
-          html: 'html',
-          htm: 'html',
-          css: 'css',
-          json: 'json',
-          md: 'markdown',
-          xml: 'xml',
-          yml: 'yaml',
-          yaml: 'yaml',
-        };
-        const lang = langMap[ext] || 'auto';
-        document.getElementById('editor-language').value = lang;
-        codeEditor.setOption('mode', lang === 'auto' ? null : lang);
-
-        updateEditorStatus(`Файл загружен: ${ext.toUpperCase()}`);
-        // Switch to editor tab
-        document.getElementById('tab-editor').click();
-      }
-    } catch (err) {
-      showNotification('Ошибка загрузки файла: ' + err.message, 'error');
-    }
-  }
-
-  async function saveEditorFile() {
-    if (!currentEditorFile || !codeEditor) return;
-    try {
-      const content = codeEditor.getValue();
-      await window.api.fs.writeFile(currentEditorFile, content); // Need IPC
-      document.getElementById('editor-save').disabled = true;
-      updateEditorStatus('Файл сохранён');
-      showNotification(`Файл сохранён: ${currentEditorFile}`, 'success');
-    } catch (err) {
-      showNotification('Ошибка сохранения: ' + err.message, 'error');
-    }
-  }
-
-  // Initialize editor when editor tab is shown
-  document.getElementById('tab-editor').addEventListener('click', () => {
-    initCodeEditor();
-  });
-
   // OpenClaw WebSocket real-time integration
   let openClawWS = null;
 
@@ -1905,9 +1892,9 @@ function initRenderer() {
 
   // Keyboard shortcuts for accessibility
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key >= '1' && e.key <= '8') {
+    if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
       const tabIndex = parseInt(e.key) - 1;
-      const tabs = ['chat', 'logs', 'files', 'editor', 'agents', 'rag', 'integrations', 'settings'];
+      const tabs = ['chat', 'logs', 'files', 'agents', 'rag', 'integrations', 'settings'];
       const tabId = tabs[tabIndex];
       const tabButton = document.getElementById('tab-' + tabId);
       if (tabButton) {
