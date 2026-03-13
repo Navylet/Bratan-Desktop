@@ -5,15 +5,18 @@
   "main": "index.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "dist": "electron-builder --publish never",
-    "dist:win": "npx @electron/packager . OpenClawDesktop --platform=win32 --arch=x64 --out=dist --overwrite --icon=build/icon.ico --ignore=node_modules/{.cache,electron-builder,electron-packager}",
-    "dist:win-builder": "npx electron-builder --win --publish never --config electron-builder.json",
-    "dist:linux": "electron-builder --linux --publish never",
-    "dist:mac": "electron-builder --mac --publish never",
+    "fluent:dev": "vite --config vite.fluent.config.js",
+    "fluent:build": "vite build --config vite.fluent.config.js",
+    "fluent:preview": "vite preview --config vite.fluent.config.js",
+    "build": "npm run fluent:build && electron-builder",
+    "build:win": "npm run fluent:build && electron-builder --win",
+    "build:mac": "npm run fluent:build && electron-builder --mac",
+    "build:linux": "npm run fluent:build && electron-builder --linux",
+    "dist": "npm run fluent:build && electron-builder --publish never",
+    "dist:win": "npm run fluent:build && npx @electron/packager . OpenClawDesktop --platform=win32 --arch=x64 --out=dist --overwrite --icon=assets/icon.ico --ignore=node_modules/{.cache,electron-builder,electron-packager}",
+    "dist:win-builder": "npm run fluent:build && npx electron-builder --win --publish never --config electron-builder.json",
+    "dist:linux": "npm run fluent:build && electron-builder --linux --publish never",
+    "dist:mac": "npm run fluent:build && electron-builder --mac --publish never",
     "postinstall": "electron-builder install-app-deps",
     "lint": "eslint . --ext .js,.jsx",
     "format": "prettier --check \"**/*.{js,json,md,yml,yaml}\"",
@@ -33,6 +36,7 @@
   "license": "ISC",
   "devDependencies": {
     "@playwright/test": "^1.59.0-alpha-2026-03-09",
+    "@vitejs/plugin-react": "^4.4.1",
     "electron": "^26.0.0",
     "electron-builder": "^26.8.2",
     "eslint": "^8.57.0",
@@ -42,7 +46,8 @@
     "jest-environment-jsdom": "^30.3.0",
     "playwright": "^1.59.0-alpha-2026-03-09",
     "playwright-electron": "^0.5.0",
-    "prettier": "^3.5.0"
+    "prettier": "^3.5.0",
+    "vite": "^5.4.10"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -52,6 +57,8 @@
     "@codemirror/lang-python": "^6.2.1",
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/theme-one-dark": "^6.1.3",
+    "@fluentui/react-components": "^9.65.0",
+    "@fluentui/react-icons": "^2.0.284",
     "@googleapis/docs": "^9.2.1",
     "@googleapis/drive": "^20.1.0",
     "@octokit/rest": "^22.0.1",
@@ -63,7 +70,11 @@
     "officeparser": "^6.0.4",
     "openai": "^6.27.0",
     "pdf-parse": "^1.1.1",
-    "puppeteer": "^24.38.0"
+    "puppeteer": "^24.38.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "resolutions": "{\"rimraf\":\"^5.0.5\",\"glob\":\"^10.3.10\",\"inflight\":\"^1.0.6\",\"once\":\"^1.4.0\",\"wrappy\":\"^1.0.2\",\"inherits\":\"^2.0.4\"}"
 }

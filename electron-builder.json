@@ -11,6 +11,7 @@
     "renderer.js",
     "preload.js",
     "index.html",
+    "dist-fluent/**/*",
     "package.json",
     "integrations/**/*",
     "assets/**/*",
@@ -28,10 +29,14 @@
     "!**/{appveyor.yml,.travis.yml,circle.yml}",
     "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
   ],
-  "asar": false,
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
   "npmRebuild": false,
   "nodeGypRebuild": false,
   "win": {
+    "icon": "assets/icon.ico",
     "target": "nsis"
   },
   "nsis": {
@@ -39,6 +44,9 @@
     "perMachine": false,
     "allowElevation": true,
     "allowToChangeInstallationDirectory": true,
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "installerHeaderIcon": "assets/icon.ico",
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
     "runAfterFinish": false
