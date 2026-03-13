@@ -367,16 +367,30 @@ function stripKnownCliNoise(text = '') {
     .filter((line) => {
       const trimmed = line.trim();
       if (!trimmed) return false;
+
+      const lower = trimmed.toLowerCase();
       return !(
         /^wsl:/i.test(trimmed) ||
-        (/^wsl:/i.test(trimmed) && trimmed.toLowerCase().includes('localhost')) ||
-        (trimmed.includes('WSL') && trimmed.toLowerCase().includes('localhost')) ||
-        trimmed.includes('Конфигурация прокси-сервера localhost обнаружена') ||
-        trimmed.includes('WSL в режиме NAT не поддерживает прокси-серверы localhost')
+        /^<\d+>wsl/i.test(trimmed) ||
+        (trimmed.includes('WSL') && lower.includes('localhost')) ||
+        lower.includes('конфигурация прокси-сервера localhost обнаружена') ||
+        lower.includes('wsl в режиме nat не поддерживает прокси-серверы localhost') ||
+        lower.includes('localhost proxy configuration was detected') ||
+        lower.includes('not mirrored into wsl') ||
+        (lower.includes('wsl in nat mode') && lower.includes('localhost'))
       );
     })
     .join('\n')
     .trim();
+}
+
+function isUnknownAgentFailureText(text = '') {
+  const normalized = String(text || '').toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.includes('unknown agent id') || normalized.includes('unknown agent');
 }
 
 function summarizeOpenClawFailure(text = '') {
@@ -396,6 +410,11 @@ function summarizeOpenClawFailure(text = '') {
         !line.startsWith('[diagnostic]') &&
         !line.startsWith('[compaction-safeguard]')
     );
+
+  const unknownAgentLine = lines.find((line) => isUnknownAgentFailureText(line));
+  if (unknownAgentLine) {
+    return unknownAgentLine;
+  }
 
   const allModelsLine = lines.find((line) => line.includes('All models failed'));
   if (allModelsLine) {
@@ -926,16 +945,19 @@ async function runOpenClawAgentTurn(payload = {}) {
       message: 'Gateway доступен. Отправляю запрос в модель.',
     });
 
-    const agentArgs = ['agent'];
-    if (agentId) {
-      agentArgs.push('--agent', agentId);
-    }
+    const buildAgentArgs = (resolvedAgentId) => {
+      const args = ['agent'];
+      if (resolvedAgentId) {
+        args.push('--agent', resolvedAgentId);
+      }
 
-    if (thinking) {
-      agentArgs.push('--thinking', thinking);
-    }
+      if (thinking) {
+        args.push('--thinking', thinking);
+      }
 
-    agentArgs.push('--session-id', sessionId, '--timeout', String(timeoutSeconds), '--message', messageForAgent, '--json');
+      args.push('--session-id', sessionId, '--timeout', String(timeoutSeconds), '--message', messageForAgent, '--json');
+      return args;
+    };
 
     let streamChunks = 0;
     const emitChunk = (source, chunk) => {
@@ -952,11 +974,30 @@ async function runOpenClawAgentTurn(payload = {}) {
       });
     };
 
-    const result = await runOpenClawCommand(agentArgs, {
+    let resolvedAgentId = agentId;
+    let result = await runOpenClawCommand(buildAgentArgs(resolvedAgentId), {
       timeoutMs: Math.max(180000, (timeoutSeconds + 20) * 1000),
       onStdoutData: (chunk) => emitChunk('stdout', chunk),
       onStderrData: (chunk) => emitChunk('stderr', chunk),
     });
+
+    if (result.code !== 0 && resolvedAgentId) {
+      const failureText = result.output || `${result.stdout}\n${result.stderr}`;
+      if (isUnknownAgentFailureText(failureText)) {
+        emitOpenClawStream({
+          requestId,
+          phase: 'agent-fallback',
+          message: `Агент "${resolvedAgentId}" не найден. Повторяю запрос с default agent.`,
+        });
+
+        resolvedAgentId = '';
+        result = await runOpenClawCommand(buildAgentArgs(resolvedAgentId), {
+          timeoutMs: Math.max(180000, (timeoutSeconds + 20) * 1000),
+          onStdoutData: (chunk) => emitChunk('stdout', chunk),
+          onStderrData: (chunk) => emitChunk('stderr', chunk),
+        });
+      }
+    }
 
     if (result.code !== 0) {
       if (result.timedOut) {
@@ -1003,6 +1044,9 @@ async function runOpenClawAgentTurn(payload = {}) {
       output: output || 'Ответ получен, но не удалось извлечь текст.',
       reasoning,
       meta,
+      requestedAgentId: agentId || null,
+      agentIdUsed: resolvedAgentId || null,
+      fallbackToDefaultAgent: Boolean(agentId && !resolvedAgentId),
       attachments: attachmentContexts.map((attachment) => ({
         name: attachment.name,
         path: attachment.path,
@@ -1791,7 +1835,7 @@ async function listOpenClawSessions() {
 
 async function listOpenClawAgents() {
   const sessions = await listOpenClawSessions();
-  const agents = new Set(['main-agent']);
+  const agents = new Set();
 
   sessions.forEach((session) => {
     if (session.agentId) {

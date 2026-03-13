@@ -400,6 +400,20 @@
                   <i class="fas fa-search mr-1"></i> Поиск репозиториев
                 </button>
               </div>
+              <div class="mt-3">
+                <input
+                  type="text"
+                  id="github-search-query"
+                  placeholder="Например: topic:electron language:javascript stars:>100"
+                  class="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div class="mt-4">
+                <div id="github-repos-status" class="text-xs text-gray-600 mb-2">Репозитории не загружены</div>
+                <div id="github-repos-list" class="max-h-64 overflow-auto bg-gray-50 border rounded p-2 space-y-2">
+                  <div class="text-sm text-gray-500">Нажмите "Мои репозитории", чтобы загрузить список.</div>
+                </div>
+              </div>
             </div>
 
             <!-- Perplexity API -->

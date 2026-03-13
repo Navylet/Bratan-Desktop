@@ -127,6 +127,14 @@ function initRenderer() {
         return;
       }
 
+      if (phase === 'agent-fallback') {
+        const statusText = message || 'Переключаюсь на default agent...';
+        setChatLiveStatus(statusText, true);
+        updateTypingIndicator(statusText);
+        appendAgentTrace('CLI agent fallback', statusText);
+        return;
+      }
+
       if (phase === 'completed') {
         setChatLiveStatus('', false);
         return;
@@ -715,7 +723,7 @@ function initRenderer() {
     chatInput.value = '';
     setChatLiveStatus('Запрос отправлен. Агент готовит ответ...', true);
     startTypingIndicator(runtime.agentId || 'Братан');
-    appendAgentTrace('Запрос отправлен', `session=${runtime.sessionId}; agent=${runtime.agentId || 'main-agent'}; attachments=${attachmentPaths.length}`);
+    appendAgentTrace('Запрос отправлен', `session=${runtime.sessionId}; agent=${runtime.agentId || 'default'}; attachments=${attachmentPaths.length}`);
 
     const requestPayload = {
       text: text || 'Проанализируй приложенные файлы и ответь по их содержимому.',
@@ -731,13 +739,24 @@ function initRenderer() {
       appendAgentTrace('CLI fallback', 'Переход на выполнение через openclaw agent CLI');
       updateTypingIndicator('Получаю ответ через CLI');
       const result = await window.api.openclaw.sendMessage(requestPayload);
+
+      if (result?.fallbackToDefaultAgent && runtime.agentId) {
+        if (chatAgentIdInput) {
+          chatAgentIdInput.value = '';
+        }
+        persistChatRuntimeSettings();
+        appendAgentTrace('Agent reset', `Агент ${runtime.agentId} недоступен, использован default agent`);
+        showNotification(`Агент "${runtime.agentId}" недоступен. Переключено на default agent.`, 'warning');
+      }
+
       const response = extractAssistantReplyText(result) || 'Ответ получен, но текст пустой.';
+      const effectiveAgentName = result?.agentIdUsed || runtime.agentId || 'Братан';
       stopTypingIndicator();
-      finalizeStreamingMessage(runtime.agentId || 'Братан', requestId, response);
+      finalizeStreamingMessage(effectiveAgentName, requestId, response);
       if (runtime.showReasoning) {
         renderReasoning(result.reasoning || extractReasoningFromPayload(result.raw || result), result.meta || extractMetaFromPayload(result.raw || result), 'cli');
       }
-      appendAgentTrace('Ответ готов', `transport=cli; chars=${response.length}`);
+      appendAgentTrace('Ответ готов', `transport=cli; agent=${effectiveAgentName}; chars=${response.length}`);
       updateConnectionStatus('cli');
       return true;
     };
@@ -1370,6 +1389,83 @@ function initRenderer() {
   });
 
   // GitHub
+  const githubStatusLabel = document.getElementById('github-status');
+  const githubStatusDot = githubStatusLabel ? githubStatusLabel.previousElementSibling : null;
+  const githubReposStatus = document.getElementById('github-repos-status');
+  const githubReposList = document.getElementById('github-repos-list');
+  const githubSearchQueryInput = document.getElementById('github-search-query');
+
+  function setGithubAuthStatus(isAuthorized) {
+    if (!githubStatusLabel || !githubStatusDot) return;
+    githubStatusLabel.textContent = isAuthorized ? 'Авторизован' : 'Не авторизован';
+    githubStatusDot.classList.remove('bg-red-500', 'bg-green-500');
+    githubStatusDot.classList.add(isAuthorized ? 'bg-green-500' : 'bg-red-500');
+  }
+
+  function setGithubReposStatus(message, isError = false) {
+    if (!githubReposStatus) return;
+    githubReposStatus.textContent = message;
+    githubReposStatus.classList.remove('text-gray-600', 'text-red-600');
+    githubReposStatus.classList.add(isError ? 'text-red-600' : 'text-gray-600');
+  }
+
+  function renderGithubRepos(repos, contextLabel) {
+    if (!githubReposList) return;
+
+    if (!Array.isArray(repos) || repos.length === 0) {
+      githubReposList.innerHTML = '<div class="text-sm text-gray-500">Репозитории не найдены</div>';
+      return;
+    }
+
+    const scope = contextLabel ? ` (${escapeHtml(contextLabel)})` : '';
+    setGithubReposStatus(`Найдено ${repos.length} репозиториев${scope}`);
+
+    githubReposList.innerHTML = repos
+      .map((repo) => {
+        const description = repo.description ? escapeHtml(repo.description) : 'Без описания';
+        const language = repo.language ? escapeHtml(repo.language) : '—';
+        const stars = Number(repo.stars) || 0;
+        const forks = Number(repo.forks) || 0;
+        const updated = repo.updated ? new Date(repo.updated).toLocaleDateString() : '—';
+        const visibility = repo.isPrivate ? 'private' : 'public';
+        const safeUrl = escapeHtml(repo.url || '#');
+
+        return `
+          <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" class="block border rounded bg-white p-3 hover:border-gray-400 transition-colors">
+            <div class="flex items-center justify-between gap-2">
+              <div class="font-medium text-sm truncate">${escapeHtml(repo.fullName || repo.name || 'unknown')}</div>
+              <div class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-700">${visibility}</div>
+            </div>
+            <div class="text-xs text-gray-600 mt-1 line-clamp-2">${description}</div>
+            <div class="text-xs text-gray-500 mt-2 flex items-center gap-3">
+              <span><i class="fas fa-code mr-1"></i>${language}</span>
+              <span><i class="fas fa-star mr-1"></i>${stars}</span>
+              <span><i class="fas fa-code-branch mr-1"></i>${forks}</span>
+              <span>Updated ${updated}</span>
+            </div>
+          </a>
+        `;
+      })
+      .join('');
+  }
+
+  async function syncGithubAuthorizationState() {
+    try {
+      const result = await window.api.github.init();
+      const initialized = Boolean(result?.initialized);
+      setGithubAuthStatus(initialized);
+
+      if (initialized) {
+        setGithubReposStatus('GitHub авторизован. Нажмите "Мои репозитории", чтобы загрузить список.');
+      } else {
+        setGithubReposStatus('Укажите GitHub token, чтобы загрузить репозитории.');
+      }
+    } catch (err) {
+      setGithubAuthStatus(false);
+      setGithubReposStatus(`Ошибка проверки GitHub: ${err.message}`, true);
+    }
+  }
+
   document.getElementById('btn-github-auth').addEventListener('click', async () => {
     const token = document.getElementById('github-token').value.trim();
     if (!token) {
@@ -1377,28 +1473,71 @@ function initRenderer() {
       return;
     }
     try {
-      await window.api.github.init(token);
-      document.getElementById('github-status').textContent = 'Авторизован';
-      document
-        .getElementById('github-status')
-        .previousElementSibling.classList.remove('bg-red-500');
-      document.getElementById('github-status').previousElementSibling.classList.add('bg-green-500');
+      const result = await window.api.github.init(token);
+      if (!result?.initialized) {
+        throw new Error('Токен не принят GitHub API');
+      }
+
+      setGithubAuthStatus(true);
       document.getElementById('github-token').value = '';
+      setGithubReposStatus('Токен сохранён. Теперь можно загрузить репозитории.');
       showNotification('GitHub авторизован успешно', 'success');
     } catch (err) {
+      setGithubAuthStatus(false);
+      setGithubReposStatus('Не удалось авторизоваться в GitHub', true);
       showNotification('Ошибка GitHub: ' + err.message, 'error');
     }
   });
 
   document.getElementById('btn-github-repos').addEventListener('click', async () => {
     try {
-      const repos = await window.api.github.userRepos();
+      setGithubReposStatus('Загружаю ваши репозитории...');
+      const repos = await window.api.github.userRepos('updated', 'desc');
+      renderGithubRepos(repos, 'ваши');
       showNotification(`Загружено ${repos.length} репозиториев`, 'success');
-      console.log('GitHub repos:', repos);
     } catch (err) {
+      setGithubReposStatus(`Ошибка загрузки репозиториев: ${err.message}`, true);
+      if (githubReposList) {
+        githubReposList.innerHTML = '<div class="text-sm text-red-600">Не удалось загрузить список репозиториев.</div>';
+      }
       showNotification('Ошибка загрузки репозиториев: ' + err.message, 'error');
     }
   });
+
+  document.getElementById('btn-github-search').addEventListener('click', async () => {
+    const query = String(githubSearchQueryInput?.value || '').trim();
+    if (!query) {
+      showNotification('Введите запрос для поиска репозиториев', 'warning');
+      return;
+    }
+
+    try {
+      setGithubReposStatus(`Поиск GitHub: ${query}`);
+      const repos = await window.api.github.searchRepos(query, {
+        sort: 'stars',
+        order: 'desc',
+        perPage: 50,
+      });
+      renderGithubRepos(repos, `поиск: ${query}`);
+      showNotification(`Найдено ${repos.length} репозиториев`, 'success');
+    } catch (err) {
+      setGithubReposStatus(`Ошибка поиска: ${err.message}`, true);
+      if (githubReposList) {
+        githubReposList.innerHTML = '<div class="text-sm text-red-600">Поиск репозиториев завершился ошибкой.</div>';
+      }
+      showNotification('Ошибка поиска репозиториев: ' + err.message, 'error');
+    }
+  });
+
+  if (githubSearchQueryInput) {
+    githubSearchQueryInput.addEventListener('keypress', (event) => {
+      if (event.key === 'Enter') {
+        document.getElementById('btn-github-search').click();
+      }
+    });
+  }
+
+  void syncGithubAuthorizationState();
 
   // Perplexity search
   document.getElementById('btn-perplexity-search').addEventListener('click', async () => {

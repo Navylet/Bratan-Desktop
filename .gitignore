@@ -12,6 +12,7 @@ release/
 # Runtime data
 .DS_Store
 Thumbs.db
+tokens/
 
 # Environment variables
 .env
