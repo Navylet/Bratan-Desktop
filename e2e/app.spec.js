@@ -1,41 +1,24 @@
 const { test, expect } = require('@playwright/test');
-const { spawn } = require('child_process');
-const { chromium } = require('playwright');
+const { _electron: electron } = require('playwright');
 
 test.describe('OpenClaw Desktop', () => {
-  let electronProcess;
-  let browser;
+  let electronApp;
   let page;
 
   test.beforeAll(async () => {
-    const port = 9223;
-    // Launch Electron with remote debugging
-    electronProcess = spawn(require('electron'), ['.', `--remote-debugging-port=${port}`], {
-      stdio: 'inherit',
+    electronApp = await electron.launch({
+      args: ['.'],
     });
 
-    // Wait for Electron to start and open debugging port
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
-    // Connect to the Electron instance via CDP
-    browser = await chromium.connectOverCDP(`http://localhost:${port}`);
-    const contexts = browser.contexts();
-    expect(contexts.length).toBeGreaterThan(0);
-    page = contexts[0].pages()[0];
-    if (!page) {
-      page = await contexts[0].newPage();
-    }
+    page = await electronApp.firstWindow();
 
     // Wait for the app to load
     await page.waitForSelector('#current-tab-title');
   });
 
   test.afterAll(async () => {
-    if (browser) {
-      await browser.close();
-    }
-    if (electronProcess) {
-      electronProcess.kill();
+    if (electronApp) {
+      await electronApp.close();
     }
   });
 
@@ -49,19 +32,19 @@ test.describe('OpenClaw Desktop', () => {
     // Click on Logs tab
     await page.click('#tab-logs');
     await expect(page.locator('#content-logs')).not.toHaveClass('hidden');
-    await expect(page.locator('#content-chat')).toHaveClass('hidden');
+    await expect(page.locator('#content-chat')).toHaveClass(/(^|\s)hidden(\s|$)/);
     const logsTitle = await page.textContent('h2');
     expect(logsTitle).toContain('Логи OpenClaw Gateway');
 
     // Click on Files tab
     await page.click('#tab-files');
     await expect(page.locator('#content-files')).not.toHaveClass('hidden');
-    await expect(page.locator('#content-logs')).toHaveClass('hidden');
+    await expect(page.locator('#content-logs')).toHaveClass(/(^|\s)hidden(\s|$)/);
 
     // Click back to Chat tab
     await page.click('#tab-chat');
     await expect(page.locator('#content-chat')).not.toHaveClass('hidden');
-    await expect(page.locator('#content-files')).toHaveClass('hidden');
+    await expect(page.locator('#content-files')).toHaveClass(/(^|\s)hidden(\s|$)/);
   });
 
   test('should send a chat message', async () => {
@@ -81,5 +64,69 @@ test.describe('OpenClaw Desktop', () => {
     await expect(startButton).toBeVisible();
     await expect(stopButton).toBeDisabled();
     await expect(status).toContainText('Gateway не запущен');
+  });
+
+  test('should show advanced chat runtime controls', async () => {
+    await page.click('#tab-chat');
+
+    await expect(page.locator('#btn-chat-attach')).toBeVisible();
+    await expect(page.locator('#chat-agent-id')).toBeVisible();
+    await expect(page.locator('#chat-session-id')).toBeVisible();
+    await expect(page.locator('#chat-thinking')).toBeVisible();
+    await expect(page.locator('#chat-show-reasoning')).toBeVisible();
+    await expect(page.locator('#chat-reasoning-panel')).toBeVisible();
+
+    await page.fill('#chat-agent-id', 'main-agent');
+    await page.fill('#chat-session-id', 'bratan-desktop-ui');
+    await page.selectOption('#chat-thinking', 'low');
+
+    await expect(page.locator('#chat-agent-id')).toHaveValue('main-agent');
+    await expect(page.locator('#chat-session-id')).toHaveValue('bratan-desktop-ui');
+    await expect(page.locator('#chat-thinking')).toHaveValue('low');
+  });
+
+  test('should show realtime response preparation indicator', async () => {
+    await page.click('#tab-chat');
+
+    const input = page.locator('#chat-input');
+    await input.fill('e2e realtime indicator check');
+    await page.click('#btn-send');
+
+    const typingLocator = page.locator('.chat-message-typing');
+    const liveStatusLocator = page.locator('#chat-live-status');
+
+    // Indicator can be transient, so accept either typing bubble or visible live status.
+    await expect
+      .poll(async () => {
+        const typingCount = await typingLocator.count();
+        const statusHidden = await liveStatusLocator.evaluate((el) => el.classList.contains('hidden'));
+        return typingCount > 0 || !statusHidden;
+      })
+      .toBeTruthy();
+  });
+
+  test('should render agents runtime panel', async () => {
+    await page.click('#tab-agents');
+    await expect(page.locator('#btn-refresh-agent-runtime')).toBeVisible();
+    await expect(page.locator('#agents-known-list')).toBeVisible();
+    await expect(page.locator('#agents-sessions-list')).toBeVisible();
+    await expect(page.locator('#agent-reasoning-output')).toBeVisible();
+    await expect(page.locator('#agent-trace-log')).toBeVisible();
+  });
+
+  test('should render RAG Studio controls', async () => {
+    await page.click('#tab-rag');
+    await expect(page.locator('#content-rag')).not.toHaveClass('hidden');
+
+    await expect(page.locator('#btn-rag-pick-files')).toBeVisible();
+    await expect(page.locator('#btn-rag-index')).toBeVisible();
+    await expect(page.locator('#btn-rag-refresh')).toBeVisible();
+    await expect(page.locator('#btn-rag-clear')).toBeVisible();
+    await expect(page.locator('#btn-rag-export')).toBeVisible();
+    await expect(page.locator('#btn-rag-import')).toBeVisible();
+    await expect(page.locator('#rag-index-collection')).toBeVisible();
+    await expect(page.locator('#rag-collection-filter')).toBeVisible();
+    await expect(page.locator('#btn-rag-search')).toBeVisible();
+    await expect(page.locator('#btn-rag-ask')).toBeVisible();
   });
 });

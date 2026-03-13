@@ -29,6 +29,27 @@ npm test -- --coverage
 - `googleIntegration.js` – basic connect/disconnect, status, listFiles, createDocument
 - `githubIntegration.js` – connect/disconnect, token handling, repos, branches
 
+## Manual Regression Additions (March 2026)
+
+Critical regression surface after latest updates:
+
+- Chat attachment flow (`openclaw-pick-files`, `openclaw-send-message` with `attachments`).
+- Agent/subagent runtime selectors (`agentId`, `sessionId`, `thinking`).
+- Reasoning/trace rendering in Chat + Agents tabs.
+- Realtime response preparation indicator (typing/progress UI state).
+- RAG API and UI (`rag-pick-files`, `rag-index-files`, `rag-status`, `rag-search`, `rag-ask`, `rag-clear`).
+- Stream chunk updates from CLI request pipeline (`openclaw-stream` events).
+- RAG collections + index import/export workflow.
+
+Recommended smoke checklist:
+
+1. Open Chat, attach at least one file, send message, verify normal response text.
+2. Toggle reasoning visibility, verify panel updates after response.
+3. Open Agents tab, refresh runtime list, apply session to chat, send next message.
+4. Verify typing/progress indicator appears while waiting and disappears on response.
+5. Open RAG Studio, index files, run retrieval-only search, then ask with RAG.
+6. Clear RAG index and verify empty state is handled correctly.
+
 ### Adding New Unit Tests
 
 1. Create a `__tests__` folder in the relevant source directory.
@@ -68,6 +89,15 @@ npm run test:e2e
 
 - `app.spec.js` – basic application launch, tab switching, chat message, gateway controls.
 
+### Suggested E2E Extensions
+
+Add scenarios in `e2e/app.spec.js` or split into dedicated specs:
+
+- `chat-attachments.spec.js`: attach file, send, response normalization.
+- `agent-runtime.spec.js`: session/agent selection from runtime panel.
+- `rag-studio.spec.js`: file pick/index/search/ask/clear states.
+- `realtime-progress.spec.js`: typing/progress indicator state transitions.
+
 **Note:** The e2e test suite currently launches the real Electron app with remote debugging and connects via CDP. This requires a graphical environment (or Xvfb) and may need adjustment for CI environments.
 
 ### Adding New E2E Tests
@@ -95,6 +125,7 @@ A GitHub Actions workflow (`.github/workflows/ci.yml`) is set up to run tests on
 - **Mocking** for unit tests could be extended to simulate network errors and edge cases.
 - **CI** might need additional tweaks for different operating systems (Windows/macOS).
 - **Coverage thresholds** could be added to enforce a minimum coverage percentage.
+- **RAG tests** currently require fixture files and stable CLI connectivity; add deterministic local fixtures for CI.
 
 ## References
 

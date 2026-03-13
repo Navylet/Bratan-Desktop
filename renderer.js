@@ -10,33 +10,10 @@ function initRenderer() {
     'tab-files': { title: 'Файлы рабочего пространства', content: 'content-files' },
     'tab-editor': { title: 'Редактор файлов', content: 'content-editor' },
     'tab-agents': { title: 'Активные агенты', content: 'content-agents' },
+    'tab-rag': { title: 'RAG Studio', content: 'content-rag' },
     'tab-integrations': { title: 'Интеграции', content: 'content-integrations' },
     'tab-settings': { title: 'Настройки', content: 'content-settings' },
   };
-
-  Object.keys(tabs).forEach((tabId) => {
-    const tabBtn = document.getElementById(tabId);
-    if (tabBtn) {
-      tabBtn.addEventListener('click', () => {
-        // Remove active class from all tabs
-        document
-          .querySelectorAll('.sidebar-tab')
-          .forEach((t) => t.classList.remove('active', 'tab-active'));
-        // Hide all content
-        document.querySelectorAll('.tab-content').forEach((c) => c.classList.add('hidden'));
-        // Activate clicked tab
-        tabBtn.classList.add('active', 'tab-active');
-        const contentId = tabs[tabId].content;
-        document.getElementById(contentId).classList.remove('hidden');
-        document.getElementById('current-tab-title').textContent = tabs[tabId].title;
-        // Update ARIA attributes for accessibility
-        document
-          .querySelectorAll('[role="tab"]')
-          .forEach((t) => t.setAttribute('aria-selected', 'false'));
-        tabBtn.setAttribute('aria-selected', 'true');
-      });
-    }
-  });
 
   Object.keys(tabs).forEach((tabId) => {
     const tabBtn = document.getElementById(tabId);
@@ -90,6 +67,7 @@ function initRenderer() {
       await window.api.openclaw.start();
       updateGatewayStatus(true);
       showNotification('Gateway запущен', 'success');
+      void refreshTransportStatus();
     } catch (err) {
       showNotification('Ошибка запуска: ' + err.message, 'error');
     }
@@ -100,6 +78,7 @@ function initRenderer() {
       await window.api.openclaw.stop();
       updateGatewayStatus(false);
       showNotification('Gateway остановлен', 'info');
+      void refreshTransportStatus();
     } catch (err) {
       showNotification('Ошибка остановки: ' + err.message, 'error');
     }
@@ -115,6 +94,52 @@ function initRenderer() {
     logContainer.appendChild(entry);
     logContainer.scrollTop = logContainer.scrollHeight;
   });
+
+  if (window.api && typeof window.api.onOpenClawStream === 'function') {
+    window.api.onOpenClawStream((data) => {
+      if (!data || typeof data !== 'object') return;
+
+      const requestId = data.requestId;
+      if (activeRequestId && requestId && requestId !== activeRequestId) {
+        return;
+      }
+
+      const runtime = getChatRuntimeOptions();
+      const phase = String(data.phase || '').toLowerCase();
+      const message = String(data.message || '').trim();
+
+      if (phase === 'queued' || phase === 'context-prepared' || phase === 'gateway-ready') {
+        const statusText = message || 'Обработка запроса...';
+        setChatLiveStatus(statusText, true);
+        updateTypingIndicator(statusText);
+        appendAgentTrace('CLI progress', statusText);
+        return;
+      }
+
+      if (phase === 'stdout' || phase === 'stderr') {
+        if (data.chunk) {
+          appendStreamingChunk(runtime.agentId || 'Братан', requestId || activeRequestId || 'stream', data.chunk);
+        }
+
+        const statusText = phase === 'stderr' ? 'Провайдер отвечает, проверяю стабильность...' : 'Потоковый ответ поступает...';
+        setChatLiveStatus(statusText, true);
+        updateTypingIndicator(statusText);
+        return;
+      }
+
+      if (phase === 'completed') {
+        setChatLiveStatus('', false);
+        return;
+      }
+
+      if (phase === 'error') {
+        if (message) {
+          appendAgentTrace('CLI stream error', message);
+        }
+        setChatLiveStatus('', false);
+      }
+    });
+  }
 
   document.getElementById('btn-clear-logs').addEventListener('click', () => {
     logContainer.innerHTML = '';
@@ -149,48 +174,59 @@ function initRenderer() {
   }
 
   async function refreshFileList() {
-    // TODO: implement actual file listing via IPC
-    fileList.innerHTML = `
-      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/MEMORY.md">
-        <i class="fas fa-file-alt text-gray-400 mr-3"></i>
-        <div class="flex-1">
-          <div class="font-medium">MEMORY.md</div>
-          <div class="text-sm text-gray-500">Долговременная память ассистента</div>
-        </div>
-        <div class="text-xs text-gray-500">2 КБ</div>
-      </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/knowledge">
-        <i class="fas fa-folder text-yellow-500 mr-3"></i>
-        <div class="flex-1">
-          <div class="font-medium">knowledge</div>
-          <div class="text-sm text-gray-500">База знаний GIGA ARPA</div>
-        </div>
-        <div class="text-xs text-gray-500">—</div>
-      </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/GIGA-ARPA-PRD.docx">
-        <i class="fas fa-file-word text-blue-400 mr-3"></i>
-        <div class="flex-1">
-          <div class="font-medium">GIGA-ARPA-PRD.docx</div>
-          <div class="text-sm text-gray-500">Product Requirements Document</div>
-        </div>
-        <div class="text-xs text-gray-500">1.2 МБ</div>
-      </div>
-      <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${workspacePath.textContent}/Strategiya-i-pozicionirovanie-GIGA-ARPA-2030 1.2.pdf">
-        <i class="fas fa-file-pdf text-red-400 mr-3"></i>
-        <div class="flex-1">
-          <div class="font-medium">Strategiya-i-pozicionirovanie-GIGA-ARPA-2030 1.2.pdf</div>
-          <div class="text-sm text-gray-500">Стратегия и позиционирование</div>
-        </div>
-        <div class="text-xs text-gray-500">5.5 МБ</div>
-      </div>
-    `;
+    try {
+      const entries = await window.api.fs.listDir(workspacePath.textContent);
+      if (!entries.length) {
+        fileList.innerHTML = '<div class="text-center text-gray-500 py-4">Рабочая папка пуста</div>';
+        return;
+      }
 
-    fileList.querySelectorAll('.file-item').forEach((item) => {
-      item.addEventListener('click', () => {
-        const path = item.dataset.filePath;
-        if (path) openFileInEditor(path);
+      fileList.innerHTML = entries
+        .map((entry) => {
+          const iconClass = entry.isDirectory
+            ? 'fas fa-folder text-yellow-500'
+            : entry.name.endsWith('.pdf')
+              ? 'fas fa-file-pdf text-red-400'
+              : entry.name.endsWith('.doc') || entry.name.endsWith('.docx')
+                ? 'fas fa-file-word text-blue-400'
+                : 'fas fa-file-alt text-gray-400';
+          const sizeLabel = entry.isDirectory
+            ? '—'
+            : entry.size > 1024 * 1024
+              ? `${(entry.size / (1024 * 1024)).toFixed(1)} МБ`
+              : `${Math.max(1, Math.round(entry.size / 1024))} КБ`;
+
+          return `
+            <div class="file-item flex items-center p-3 border-b cursor-pointer" data-file-path="${entry.path}" data-is-directory="${entry.isDirectory}">
+              <i class="${iconClass} mr-3"></i>
+              <div class="flex-1 min-w-0">
+                <div class="font-medium truncate">${entry.name}</div>
+                <div class="text-sm text-gray-500">${entry.isDirectory ? 'Папка рабочего пространства' : 'Файл рабочего пространства'}</div>
+              </div>
+              <div class="text-xs text-gray-500">${sizeLabel}</div>
+            </div>
+          `;
+        })
+        .join('');
+
+      fileList.querySelectorAll('.file-item').forEach((item) => {
+        item.addEventListener('click', () => {
+          const entryPath = item.dataset.filePath;
+          const isDirectory = item.dataset.isDirectory === 'true';
+          if (!entryPath) return;
+
+          if (isDirectory) {
+            window.api.fs.openFolder(entryPath);
+            return;
+          }
+
+          openFileInEditor(entryPath);
+        });
       });
-    });
+    } catch (err) {
+      fileList.innerHTML = '<div class="text-center text-red-500 py-4">Не удалось загрузить файлы</div>';
+      showNotification('Ошибка загрузки списка файлов: ' + err.message, 'error');
+    }
   }
 
   document.getElementById('btn-refresh-files').addEventListener('click', refreshFileList);
@@ -202,6 +238,40 @@ function initRenderer() {
   const chatInput = document.getElementById('chat-input');
   const chatMessages = document.getElementById('chat-messages');
   const btnSend = document.getElementById('btn-send');
+  const btnChatAttach = document.getElementById('btn-chat-attach');
+  const chatAttachmentsContainer = document.getElementById('chat-attachments');
+  const chatAgentIdInput = document.getElementById('chat-agent-id');
+  const chatSessionIdInput = document.getElementById('chat-session-id');
+  const chatThinkingSelect = document.getElementById('chat-thinking');
+  const chatShowReasoningCheckbox = document.getElementById('chat-show-reasoning');
+  const chatReasoningOutput = document.getElementById('chat-reasoning-output');
+  const chatLiveStatus = document.getElementById('chat-live-status');
+  const agentReasoningOutput = document.getElementById('agent-reasoning-output');
+  const agentTraceLog = document.getElementById('agent-trace-log');
+
+  let selectedChatAttachments = [];
+  let typingIndicator = null;
+  let typingTimer = null;
+  let traceCounter = 0;
+  let traceHistory = [];
+  let activeRequestId = null;
+  let activeStreamMessage = null;
+
+  function formatBytes(bytes) {
+    const size = Number(bytes) || 0;
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
   function addMessage(sender, text, isUser = false) {
     const msgDiv = document.createElement('div');
@@ -219,40 +289,502 @@ function initRenderer() {
     msgDiv.appendChild(timeDiv);
     chatMessages.appendChild(msgDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    return {
+      container: msgDiv,
+      senderNode: senderDiv,
+      textNode: textDiv,
+      timeNode: timeDiv,
+    };
   }
 
-  btnSend.addEventListener('click', () => {
-    const text = chatInput.value.trim();
-    if (!text) return;
-    addMessage('Дмитрий', text, true);
-    chatInput.value = '';
+  function normalizeStreamChunk(chunk) {
+    const text = String(chunk || '').trim();
+    if (!text) return '';
 
-    // Send via WebSocket
-    if (openClawWS && openClawWS.getStatus() === 'connected') {
-      openClawWS.sendMessage(
-        {
-          text,
-          timestamp: Date.now(),
-          sender: 'user',
-        },
-        'message'
-      );
-      // Response will arrive via WebSocket 'message' event
+    if (text.startsWith('{') || text.startsWith('[')) {
+      return '';
+    }
+
+    if (/^(\[tools\]|\[agent\/embedded\]|\[diagnostic\])/i.test(text)) {
+      return '';
+    }
+
+    if (/^config overwrite:/i.test(text)) {
+      return '';
+    }
+
+    if (/^doctor warnings/i.test(text)) {
+      return '';
+    }
+
+    return text;
+  }
+
+  function ensureStreamingAssistantMessage(sender, requestId) {
+    if (activeStreamMessage && activeStreamMessage.requestId === requestId) {
+      return activeStreamMessage;
+    }
+
+    const message = addMessage(sender || 'Братан', '', false);
+    message.container.classList.add('border', 'border-indigo-200', 'bg-indigo-50');
+    message.textNode.textContent = '';
+
+    activeStreamMessage = {
+      requestId,
+      ...message,
+    };
+
+    return activeStreamMessage;
+  }
+
+  function appendStreamingChunk(sender, requestId, chunk) {
+    const normalized = normalizeStreamChunk(chunk);
+    if (!normalized) return;
+
+    const streamingMessage = ensureStreamingAssistantMessage(sender, requestId);
+    const separator = streamingMessage.textNode.textContent ? '\n' : '';
+    streamingMessage.textNode.textContent += `${separator}${normalized}`;
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function finalizeStreamingMessage(sender, requestId, finalText) {
+    const normalizedFinalText = String(finalText || '').trim();
+    if (activeStreamMessage && activeStreamMessage.requestId === requestId) {
+      activeStreamMessage.senderNode.textContent = sender || 'Братан';
+      activeStreamMessage.textNode.textContent = normalizedFinalText || activeStreamMessage.textNode.textContent || 'Ответ получен.';
+      activeStreamMessage.container.classList.remove('border', 'border-indigo-200', 'bg-indigo-50');
+      activeStreamMessage = null;
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return;
+    }
+
+    addMessage(sender || 'Братан', normalizedFinalText || 'Ответ получен.');
+  }
+
+  function clearStreamingMessage(requestId) {
+    if (!activeStreamMessage || activeStreamMessage.requestId !== requestId) {
+      return;
+    }
+
+    if (activeStreamMessage.container && activeStreamMessage.container.parentNode) {
+      activeStreamMessage.container.parentNode.removeChild(activeStreamMessage.container);
+    }
+    activeStreamMessage = null;
+  }
+
+  function appendAgentTrace(stage, details = '') {
+    traceCounter += 1;
+    const entry = {
+      id: traceCounter,
+      time: new Date().toLocaleTimeString(),
+      stage,
+      details,
+    };
+
+    traceHistory = [entry, ...traceHistory].slice(0, 50);
+    if (!agentTraceLog) return;
+
+    agentTraceLog.innerHTML = traceHistory
+      .map(
+        (trace) => `
+        <div class="text-xs border rounded p-2 bg-gray-50">
+          <div class="font-semibold text-gray-700">[${escapeHtml(trace.time)}] ${escapeHtml(trace.stage)}</div>
+          <div class="text-gray-600 mt-1">${escapeHtml(trace.details || '—')}</div>
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  function renderReasoning(reasoning, meta, transport) {
+    const lines = [];
+    if (Array.isArray(reasoning) && reasoning.length > 0) {
+      lines.push('Reasoning fragments:');
+      reasoning.forEach((item, index) => {
+        lines.push(`${index + 1}. ${item}`);
+      });
+    }
+
+    if (meta && typeof meta === 'object') {
+      lines.push('');
+      lines.push('Meta:');
+      lines.push(JSON.stringify(meta, null, 2));
+    }
+
+    if (transport) {
+      lines.unshift(`Transport: ${transport}`);
+    }
+
+    const finalText = lines.join('\n').trim();
+    const output = finalText || 'Reasoning отсутствует для этого ответа.';
+    if (chatReasoningOutput) {
+      chatReasoningOutput.textContent = output;
+    }
+    if (agentReasoningOutput) {
+      agentReasoningOutput.textContent = output;
+    }
+  }
+
+  function setChatLiveStatus(message = '', visible = false) {
+    if (!chatLiveStatus) return;
+    chatLiveStatus.textContent = message;
+    if (visible && message) {
+      chatLiveStatus.classList.remove('hidden');
     } else {
-      // Offline: queue message and show notification
-      if (openClawWS) {
-        openClawWS.sendMessage(
-          {
-            text,
-            timestamp: Date.now(),
-            sender: 'user',
-          },
-          'message'
-        );
-        addMessage('Система', 'Сообщение сохранено в очередь. Отправлю при восстановлении связи.');
-      } else {
-        addMessage('Система', 'WebSocket не инициализирован. Сообщение не отправлено.');
+      chatLiveStatus.classList.add('hidden');
+    }
+  }
+
+  function startTypingIndicator(sender = 'Братан') {
+    stopTypingIndicator();
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-message-typing';
+
+    const senderDiv = document.createElement('div');
+    senderDiv.className = 'font-semibold text-indigo-700';
+    senderDiv.textContent = sender;
+
+    const textDiv = document.createElement('div');
+    textDiv.innerHTML = 'Готовлю ответ <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+
+    const timeDiv = document.createElement('div');
+    timeDiv.className = 'text-xs text-gray-500 mt-1';
+    timeDiv.textContent = new Date().toLocaleTimeString();
+
+    msgDiv.appendChild(senderDiv);
+    msgDiv.appendChild(textDiv);
+    msgDiv.appendChild(timeDiv);
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    typingIndicator = { container: msgDiv, textNode: textDiv };
+    let stageIndex = 0;
+    const stages = [
+      'Готовлю ответ',
+      'Анализирую контекст',
+      'Собираю reasoning',
+      'Формирую финальный текст',
+    ];
+
+    typingTimer = setInterval(() => {
+      if (!typingIndicator) return;
+      stageIndex = (stageIndex + 1) % stages.length;
+      typingIndicator.textNode.innerHTML = `${stages[stageIndex]} <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>`;
+    }, 1500);
+  }
+
+  function updateTypingIndicator(stage) {
+    if (!typingIndicator || !typingIndicator.textNode) return;
+    typingIndicator.textNode.innerHTML = `${escapeHtml(stage)} <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>`;
+  }
+
+  function stopTypingIndicator() {
+    if (typingTimer) {
+      clearInterval(typingTimer);
+      typingTimer = null;
+    }
+
+    if (typingIndicator && typingIndicator.container && typingIndicator.container.parentNode) {
+      typingIndicator.container.parentNode.removeChild(typingIndicator.container);
+    }
+
+    typingIndicator = null;
+  }
+
+  function getChatRuntimeOptions() {
+    const agentId = (chatAgentIdInput?.value || '').trim();
+    const sessionId = (chatSessionIdInput?.value || '').trim() || 'bratan-desktop-ui';
+    const thinking = (chatThinkingSelect?.value || 'medium').trim();
+    const showReasoning = Boolean(chatShowReasoningCheckbox?.checked);
+
+    return { agentId, sessionId, thinking, showReasoning };
+  }
+
+  function extractReasoningFromPayload(payload) {
+    const reasoningKeys = new Set(['reasoning', 'analysis', 'thinking', 'thoughts', 'rationale', 'plan', 'trace']);
+    const stack = [payload];
+    const visited = new Set();
+    const found = [];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || typeof current !== 'object') continue;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      if (Array.isArray(current)) {
+        current.forEach((item) => stack.push(item));
+        continue;
       }
+
+      Object.entries(current).forEach(([key, value]) => {
+        const normalizedKey = String(key || '').toLowerCase();
+        if (typeof value === 'string' && value.trim() && reasoningKeys.has(normalizedKey)) {
+          found.push(value.trim());
+        }
+
+        if (value && typeof value === 'object') {
+          stack.push(value);
+        }
+      });
+    }
+
+    return Array.from(new Set(found)).slice(0, 8);
+  }
+
+  function extractMetaFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    if (payload.meta && typeof payload.meta === 'object') return payload.meta;
+    if (payload.result && payload.result.meta && typeof payload.result.meta === 'object') return payload.result.meta;
+    return null;
+  }
+
+  function renderChatAttachments() {
+    if (!chatAttachmentsContainer) return;
+    if (!selectedChatAttachments.length) {
+      chatAttachmentsContainer.innerHTML = '';
+      return;
+    }
+
+    chatAttachmentsContainer.innerHTML = selectedChatAttachments
+      .map(
+        (file) => `
+        <div class="inline-flex items-center bg-gray-100 border rounded px-2 py-1 text-xs">
+          <i class="fas fa-file mr-2 text-gray-500"></i>
+          <span class="mr-2">${escapeHtml(file.name)} (${formatBytes(file.size)})</span>
+          <button class="text-red-500 hover:text-red-700" data-remove-chat-file="${escapeHtml(file.path)}" title="Удалить">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      `
+      )
+      .join('');
+
+    chatAttachmentsContainer.querySelectorAll('[data-remove-chat-file]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const filePath = button.getAttribute('data-remove-chat-file');
+        selectedChatAttachments = selectedChatAttachments.filter((file) => file.path !== filePath);
+        renderChatAttachments();
+      });
+    });
+  }
+
+  async function pickChatAttachments() {
+    try {
+      const files = await window.api.openclaw.pickFiles({ multi: true });
+      if (!Array.isArray(files) || files.length === 0) return;
+
+      const known = new Set(selectedChatAttachments.map((file) => file.path));
+      files.forEach((file) => {
+        if (file?.path && !known.has(file.path)) {
+          selectedChatAttachments.push(file);
+          known.add(file.path);
+        }
+      });
+
+      selectedChatAttachments = selectedChatAttachments.slice(0, 5);
+      renderChatAttachments();
+      appendAgentTrace('Файлы прикреплены', selectedChatAttachments.map((file) => file.name).join(', '));
+    } catch (err) {
+      showNotification('Ошибка выбора файлов: ' + err.message, 'error');
+    }
+  }
+
+  if (btnChatAttach) {
+    btnChatAttach.addEventListener('click', () => {
+      void pickChatAttachments();
+    });
+  }
+
+  function isTransientModelFailureText(text) {
+    const normalized = String(text || '').trim().toLowerCase();
+    if (!normalized) return true;
+
+    return (
+      normalized.includes('llm request timed out') ||
+      normalized.includes('all models failed') ||
+      normalized.includes('provider auth issue') ||
+      normalized.includes('request not allowed') ||
+      normalized.includes('forbidden') ||
+      normalized === 'timed out' ||
+      normalized === 'timeout'
+    );
+  }
+
+  function pickPreferredReply(texts) {
+    const cleaned = texts.map((text) => String(text || '').trim()).filter(Boolean);
+    if (!cleaned.length) {
+      return '';
+    }
+
+    const nonFailure = cleaned.filter((text) => !isTransientModelFailureText(text));
+    const preferred = nonFailure.length ? nonFailure[nonFailure.length - 1] : cleaned[cleaned.length - 1];
+    return preferred || '';
+  }
+
+  function extractAssistantReplyText(payload) {
+    if (payload === null || payload === undefined) return '';
+    if (typeof payload === 'string') return payload.trim();
+
+    if (Array.isArray(payload)) {
+      return pickPreferredReply(payload.map((entry) => extractAssistantReplyText(entry)));
+    }
+
+    if (payload && typeof payload === 'object' && Array.isArray(payload.payloads)) {
+      return pickPreferredReply(
+        payload.payloads.map((entry) => (entry && typeof entry.text === 'string' ? entry.text : extractAssistantReplyText(entry)))
+      );
+    }
+
+    const preferredKeys = ['output', 'message', 'text', 'content', 'reply'];
+    for (const key of preferredKeys) {
+      if (typeof payload[key] === 'string' && payload[key].trim()) {
+        return payload[key].trim();
+      }
+    }
+
+    const nestedKeys = ['result', 'final', 'data'];
+    for (const key of nestedKeys) {
+      if (payload[key] !== undefined) {
+        const nestedText = extractAssistantReplyText(payload[key]);
+        if (nestedText) return nestedText;
+      }
+    }
+
+    try {
+      return JSON.stringify(payload);
+    } catch {
+      return String(payload);
+    }
+  }
+
+  function persistChatRuntimeSettings() {
+    localStorage.setItem('openclaw_chat_agent_id', chatAgentIdInput?.value || '');
+    localStorage.setItem('openclaw_chat_session_id', chatSessionIdInput?.value || 'bratan-desktop-ui');
+    localStorage.setItem('openclaw_chat_thinking', chatThinkingSelect?.value || 'medium');
+    localStorage.setItem('openclaw_chat_show_reasoning', chatShowReasoningCheckbox?.checked ? 'true' : 'false');
+  }
+
+  [chatAgentIdInput, chatSessionIdInput, chatThinkingSelect, chatShowReasoningCheckbox].forEach((control) => {
+    if (!control) return;
+    control.addEventListener('change', persistChatRuntimeSettings);
+  });
+
+  async function syncOpenClawConfig() {
+    const cliPath = document.getElementById('setting-cli-path').value.trim();
+    const gatewayPort = Number(document.getElementById('setting-gateway-port').value);
+
+    try {
+      await window.api.openclaw.configure({ cliPath, gatewayPort });
+    } catch (err) {
+      console.error('OpenClaw config sync failed:', err);
+    }
+  }
+
+  async function refreshTransportStatus() {
+    try {
+      const status = await window.api.openclaw.status({ silent: true });
+      updateGatewayStatus(Boolean(status && status.running));
+
+      if (openClawWS && openClawWS.getStatus() === 'connected') {
+        updateConnectionStatus('connected');
+      } else if (status && status.running) {
+        updateConnectionStatus('cli');
+      } else {
+        updateConnectionStatus('disconnected');
+      }
+    } catch (err) {
+      console.error('Failed to refresh transport status:', err);
+      updateConnectionStatus('disconnected');
+    }
+  }
+
+  btnSend.addEventListener('click', async () => {
+    const text = chatInput.value.trim();
+    if (!text && selectedChatAttachments.length === 0) return;
+
+    const runtime = getChatRuntimeOptions();
+    const attachmentPaths = selectedChatAttachments.map((file) => file.path);
+    const userDisplayText = text || `Отправлены вложения: ${selectedChatAttachments.map((file) => file.name).join(', ')}`;
+    const requestId = `ui_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    activeRequestId = requestId;
+
+    addMessage('Дмитрий', userDisplayText, true);
+    chatInput.value = '';
+    setChatLiveStatus('Запрос отправлен. Агент готовит ответ...', true);
+    startTypingIndicator(runtime.agentId || 'Братан');
+    appendAgentTrace('Запрос отправлен', `session=${runtime.sessionId}; agent=${runtime.agentId || 'main-agent'}; attachments=${attachmentPaths.length}`);
+
+    const requestPayload = {
+      text: text || 'Проанализируй приложенные файлы и ответь по их содержимому.',
+      attachments: attachmentPaths,
+      agentId: runtime.agentId,
+      sessionId: runtime.sessionId,
+      thinking: runtime.thinking,
+      timeoutSeconds: 180,
+      requestId,
+    };
+
+    const sendViaCliFallback = async () => {
+      appendAgentTrace('CLI fallback', 'Переход на выполнение через openclaw agent CLI');
+      updateTypingIndicator('Получаю ответ через CLI');
+      const result = await window.api.openclaw.sendMessage(requestPayload);
+      const response = extractAssistantReplyText(result) || 'Ответ получен, но текст пустой.';
+      stopTypingIndicator();
+      finalizeStreamingMessage(runtime.agentId || 'Братан', requestId, response);
+      if (runtime.showReasoning) {
+        renderReasoning(result.reasoning || extractReasoningFromPayload(result.raw || result), result.meta || extractMetaFromPayload(result.raw || result), 'cli');
+      }
+      appendAgentTrace('Ответ готов', `transport=cli; chars=${response.length}`);
+      updateConnectionStatus('cli');
+      return true;
+    };
+
+    if (openClawWS && openClawWS.getStatus() === 'connected' && attachmentPaths.length === 0) {
+      try {
+        updateTypingIndicator('Получаю ответ через Gateway WebSocket');
+        appendAgentTrace('WS call', `agent=${runtime.agentId || 'default'}; thinking=${runtime.thinking}`);
+        const result = await openClawWS.callAgent(runtime.agentId || null, 'message', {
+          text: requestPayload.text,
+          sessionId: runtime.sessionId,
+          thinking: runtime.thinking,
+          requestId,
+        });
+        const response = extractAssistantReplyText(result) || 'Ответ получен, но текст пустой.';
+        stopTypingIndicator();
+        clearStreamingMessage(requestId);
+        addMessage(runtime.agentId || 'Братан', response);
+        if (runtime.showReasoning) {
+          renderReasoning(extractReasoningFromPayload(result), extractMetaFromPayload(result), 'websocket');
+        }
+        appendAgentTrace('Ответ готов', `transport=websocket; chars=${response.length}`);
+        selectedChatAttachments = [];
+        renderChatAttachments();
+        setChatLiveStatus('', false);
+        activeRequestId = null;
+        return;
+      } catch (err) {
+        console.error('OpenClaw callAgent error:', err);
+        appendAgentTrace('WS ошибка', err.message);
+      }
+    }
+
+    try {
+      await sendViaCliFallback();
+      selectedChatAttachments = [];
+      renderChatAttachments();
+      setChatLiveStatus('', false);
+      activeRequestId = null;
+    } catch (err) {
+      console.error('OpenClaw CLI fallback error:', err);
+      stopTypingIndicator();
+      setChatLiveStatus('', false);
+      clearStreamingMessage(requestId);
+      appendAgentTrace('Ошибка ответа', err.message);
+      addMessage('Система', 'Ошибка отправки сообщения: ' + err.message);
+      activeRequestId = null;
     }
   });
 
@@ -276,7 +808,406 @@ function initRenderer() {
     document.getElementById('new-agent-task').value = '';
   });
 
+  const agentsKnownList = document.getElementById('agents-known-list');
+  const agentsSessionsList = document.getElementById('agents-sessions-list');
+
+  function applyRuntimeToChat({ agentId, sessionId }) {
+    if (chatAgentIdInput && typeof agentId === 'string') {
+      chatAgentIdInput.value = agentId;
+    }
+    if (chatSessionIdInput && typeof sessionId === 'string' && sessionId.trim()) {
+      chatSessionIdInput.value = sessionId;
+    }
+    persistChatRuntimeSettings();
+    showNotification('Параметры агента применены к чату', 'success');
+  }
+
+  function renderAgentRuntimeData(agents, sessions) {
+    if (agentsKnownList) {
+      if (!agents.length) {
+        agentsKnownList.innerHTML = '<div class="text-gray-500">Агенты пока не обнаружены</div>';
+      } else {
+        agentsKnownList.innerHTML = agents
+          .map(
+            (agent) => `
+            <button class="w-full text-left hover:bg-white border rounded px-2 py-1" data-apply-agent="${escapeHtml(agent.agentId)}">
+              <span class="font-medium">${escapeHtml(agent.agentId)}</span>
+            </button>
+          `
+          )
+          .join('');
+
+        agentsKnownList.querySelectorAll('[data-apply-agent]').forEach((button) => {
+          button.addEventListener('click', () => {
+            applyRuntimeToChat({
+              agentId: button.getAttribute('data-apply-agent') || '',
+              sessionId: chatSessionIdInput?.value || 'bratan-desktop-ui',
+            });
+          });
+        });
+      }
+    }
+
+    if (agentsSessionsList) {
+      if (!sessions.length) {
+        agentsSessionsList.innerHTML = '<div class="text-gray-500">Нет активных runtime-сессий</div>';
+      } else {
+        agentsSessionsList.innerHTML = sessions
+          .map(
+            (session) => `
+            <button class="w-full text-left hover:bg-white border rounded px-2 py-1" data-session-id="${escapeHtml(session.sessionId)}" data-session-agent="${escapeHtml(session.agentId || '')}">
+              <div class="font-medium">${escapeHtml(session.sessionId)}</div>
+              <div class="text-xs text-gray-600">agent: ${escapeHtml(session.agentId || 'default')}</div>
+              <div class="text-xs text-gray-500">updated: ${escapeHtml(session.updatedAt || 'unknown')}</div>
+            </button>
+          `
+          )
+          .join('');
+
+        agentsSessionsList.querySelectorAll('[data-session-id]').forEach((button) => {
+          button.addEventListener('click', () => {
+            applyRuntimeToChat({
+              agentId: button.getAttribute('data-session-agent') || '',
+              sessionId: button.getAttribute('data-session-id') || 'bratan-desktop-ui',
+            });
+          });
+        });
+      }
+    }
+  }
+
+  async function refreshAgentRuntime() {
+    try {
+      const [agentsResult, sessionsResult] = await Promise.all([
+        window.api.openclaw.listAgents(),
+        window.api.openclaw.listSessions(),
+      ]);
+
+      const agents = Array.isArray(agentsResult?.agents) ? agentsResult.agents : [];
+      const sessions = Array.isArray(sessionsResult?.sessions) ? sessionsResult.sessions : [];
+      renderAgentRuntimeData(agents, sessions);
+      appendAgentTrace('Runtime обновлён', `agents=${agents.length}, sessions=${sessions.length}`);
+    } catch (err) {
+      if (agentsKnownList) agentsKnownList.innerHTML = '<div class="text-red-600">Ошибка загрузки агентов</div>';
+      if (agentsSessionsList) agentsSessionsList.innerHTML = '<div class="text-red-600">Ошибка загрузки сессий</div>';
+      appendAgentTrace('Runtime ошибка', err.message);
+    }
+  }
+
+  const btnRefreshAgentRuntime = document.getElementById('btn-refresh-agent-runtime');
+  if (btnRefreshAgentRuntime) {
+    btnRefreshAgentRuntime.addEventListener('click', () => {
+      void refreshAgentRuntime();
+    });
+  }
+
+  document.getElementById('tab-agents').addEventListener('click', () => {
+    void refreshAgentRuntime();
+  });
+
+  const ragSelectedFilesContainer = document.getElementById('rag-selected-files');
+  const ragIndexStatus = document.getElementById('rag-index-status');
+  const ragDocuments = document.getElementById('rag-documents');
+  const ragResults = document.getElementById('rag-results');
+  const ragAnswer = document.getElementById('rag-answer');
+  const ragLiveStatus = document.getElementById('rag-live-status');
+  const ragQueryInput = document.getElementById('rag-query');
+  const ragTopKInput = document.getElementById('rag-topk');
+  const ragIndexCollectionInput = document.getElementById('rag-index-collection');
+  const ragCollectionFilter = document.getElementById('rag-collection-filter');
+
+  let ragSelectedFiles = [];
+
+  function setRagLiveStatus(message = '', visible = false) {
+    if (!ragLiveStatus) return;
+    ragLiveStatus.textContent = message;
+    if (visible && message) {
+      ragLiveStatus.classList.remove('hidden');
+    } else {
+      ragLiveStatus.classList.add('hidden');
+    }
+  }
+
+  function renderRagSelectedFiles() {
+    if (!ragSelectedFilesContainer) return;
+    if (!ragSelectedFiles.length) {
+      ragSelectedFilesContainer.innerHTML = '<div class="text-gray-500">Файлы не выбраны</div>';
+      return;
+    }
+
+    ragSelectedFilesContainer.innerHTML = ragSelectedFiles
+      .map(
+        (file) => `
+        <div class="flex items-center justify-between border rounded px-2 py-1 bg-white">
+          <span class="truncate">${escapeHtml(file.name)} (${formatBytes(file.size)})</span>
+          <button class="text-red-500 hover:text-red-700" data-rag-remove="${escapeHtml(file.path)}">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      `
+      )
+      .join('');
+
+    ragSelectedFilesContainer.querySelectorAll('[data-rag-remove]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const filePath = button.getAttribute('data-rag-remove');
+        ragSelectedFiles = ragSelectedFiles.filter((file) => file.path !== filePath);
+        renderRagSelectedFiles();
+      });
+    });
+  }
+
+  function renderRagHits(hits) {
+    if (!ragResults) return;
+    if (!Array.isArray(hits) || hits.length === 0) {
+      ragResults.innerHTML = '<div class="text-sm text-gray-500">Совпадения не найдены</div>';
+      return;
+    }
+
+    ragResults.innerHTML = hits
+      .map(
+        (hit) => `
+        <div class="border rounded p-2 bg-gray-50">
+          <div class="text-xs text-gray-500 mb-1">${escapeHtml(hit.name)} · collection ${escapeHtml(hit.collection || 'default')} · chunk ${Number(hit.index) + 1} · score ${hit.score}</div>
+          <div class="text-sm whitespace-pre-wrap">${escapeHtml(hit.snippet)}</div>
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  function renderRagStatus(status) {
+    if (!ragIndexStatus || !ragDocuments) return;
+    ragIndexStatus.textContent = `Документов: ${status.documentsCount || 0}, chunks: ${status.chunksCount || 0}, обновлён: ${status.updatedAt || '—'}`;
+
+    if (ragCollectionFilter) {
+      const previousValue = ragCollectionFilter.value || 'all';
+      const collections = Array.isArray(status.collections) ? status.collections : [];
+      const options = ['<option value="all">all collections</option>'];
+      collections.forEach((collection) => {
+        options.push(
+          `<option value="${escapeHtml(collection.name)}">${escapeHtml(collection.name)} (${collection.documents})</option>`
+        );
+      });
+      ragCollectionFilter.innerHTML = options.join('');
+
+      const exists = collections.some((collection) => collection.name === previousValue) || previousValue === 'all';
+      ragCollectionFilter.value = exists ? previousValue : 'all';
+    }
+
+    if (!Array.isArray(status.documents) || status.documents.length === 0) {
+      ragDocuments.innerHTML = '<div class="text-gray-500">Индекс пуст</div>';
+      return;
+    }
+
+    ragDocuments.innerHTML = status.documents
+      .map(
+        (doc) => `
+        <div class="border rounded p-2 bg-white">
+          <div class="font-medium text-sm">${escapeHtml(doc.name)}</div>
+          <div class="text-xs text-gray-600">collection: ${escapeHtml(doc.collection || 'default')}</div>
+          <div class="text-xs text-gray-600">chunks: ${doc.chunks}, size: ${formatBytes(doc.size)}</div>
+          <div class="text-xs text-gray-500 truncate">${escapeHtml(doc.path)}</div>
+        </div>
+      `
+      )
+      .join('');
+  }
+
+  async function refreshRagStatus() {
+    try {
+      const status = await window.api.rag.status();
+      renderRagStatus(status || {});
+    } catch (err) {
+      if (ragIndexStatus) ragIndexStatus.textContent = `Ошибка загрузки статуса: ${err.message}`;
+    }
+  }
+
+  document.getElementById('btn-rag-pick-files').addEventListener('click', async () => {
+    try {
+      const files = await window.api.rag.pickFiles({ multi: true });
+      if (!Array.isArray(files) || files.length === 0) return;
+
+      const known = new Set(ragSelectedFiles.map((file) => file.path));
+      files.forEach((file) => {
+        if (file?.path && !known.has(file.path)) {
+          ragSelectedFiles.push(file);
+          known.add(file.path);
+        }
+      });
+      renderRagSelectedFiles();
+    } catch (err) {
+      showNotification('Ошибка выбора файлов для RAG: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-rag-index').addEventListener('click', async () => {
+    if (!ragSelectedFiles.length) {
+      showNotification('Сначала выберите файлы для индексации', 'warning');
+      return;
+    }
+
+    try {
+      setRagLiveStatus('Индексация файлов...', true);
+      const collection = String(ragIndexCollectionInput?.value || 'default').trim() || 'default';
+      const result = await window.api.rag.indexFiles({
+        files: ragSelectedFiles.map((file) => file.path),
+        collection,
+      });
+      renderRagStatus(result?.status || {});
+      const errorCount = Array.isArray(result?.errors) ? result.errors.length : 0;
+      showNotification(`RAG индекс обновлён (${collection}): indexed=${result?.indexed || 0}, errors=${errorCount}`, 'success');
+    } catch (err) {
+      showNotification('Ошибка индексации RAG: ' + err.message, 'error');
+    } finally {
+      setRagLiveStatus('', false);
+    }
+  });
+
+  document.getElementById('btn-rag-refresh').addEventListener('click', () => {
+    void refreshRagStatus();
+  });
+
+  document.getElementById('btn-rag-clear').addEventListener('click', async () => {
+    try {
+      const status = await window.api.rag.clear();
+      renderRagStatus(status || {});
+      if (ragResults) ragResults.innerHTML = '';
+      if (ragAnswer) ragAnswer.textContent = '';
+      showNotification('RAG индекс очищен', 'info');
+    } catch (err) {
+      showNotification('Ошибка очистки RAG: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-rag-search').addEventListener('click', async () => {
+    const query = String(ragQueryInput?.value || '').trim();
+    const topK = Number(ragTopKInput?.value || 5);
+    const collection = String(ragCollectionFilter?.value || 'all').trim() || 'all';
+    if (!query) {
+      showNotification('Введите вопрос для RAG поиска', 'warning');
+      return;
+    }
+
+    try {
+      setRagLiveStatus('Ищу релевантные фрагменты...', true);
+      const result = await window.api.rag.search({ query, topK, collection });
+      renderRagHits(result?.hits || []);
+      if (ragAnswer) {
+        ragAnswer.textContent = `Найдено фрагментов: ${(result?.hits || []).length} (collection: ${result?.collection || collection})`;
+      }
+    } catch (err) {
+      showNotification('Ошибка RAG поиска: ' + err.message, 'error');
+    } finally {
+      setRagLiveStatus('', false);
+    }
+  });
+
+  document.getElementById('btn-rag-ask').addEventListener('click', async () => {
+    const query = String(ragQueryInput?.value || '').trim();
+    const topK = Number(ragTopKInput?.value || 5);
+    const collection = String(ragCollectionFilter?.value || 'all').trim() || 'all';
+    if (!query) {
+      showNotification('Введите вопрос для RAG запроса', 'warning');
+      return;
+    }
+
+    try {
+      setRagLiveStatus('Готовлю ответ агента по RAG...', true);
+      const runtime = getChatRuntimeOptions();
+      const requestId = `rag_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const result = await window.api.rag.ask({
+        query,
+        topK,
+        collection,
+        agentId: runtime.agentId,
+        sessionId: runtime.sessionId || 'rag-studio-session',
+        thinking: runtime.thinking,
+        requestId,
+      });
+
+      if (ragAnswer) {
+        ragAnswer.textContent = result?.answer || 'Пустой ответ';
+      }
+      renderRagHits(result?.hits || []);
+
+      if (runtime.showReasoning) {
+        renderReasoning(result?.reasoning || [], result?.meta || null, 'rag');
+      }
+    } catch (err) {
+      if (ragAnswer) {
+        ragAnswer.textContent = `Ошибка: ${err.message}`;
+      }
+      showNotification('Ошибка RAG ответа: ' + err.message, 'error');
+    } finally {
+      setRagLiveStatus('', false);
+    }
+  });
+
+  document.getElementById('tab-rag').addEventListener('click', () => {
+    void refreshRagStatus();
+    renderRagSelectedFiles();
+  });
+
+  document.getElementById('btn-rag-export').addEventListener('click', async () => {
+    try {
+      const result = await window.api.rag.exportIndex({});
+      if (result?.canceled) return;
+      showNotification(`RAG экспортирован: ${result?.filePath || 'unknown file'}`, 'success');
+    } catch (err) {
+      showNotification('Ошибка экспорта RAG: ' + err.message, 'error');
+    }
+  });
+
+  document.getElementById('btn-rag-import').addEventListener('click', async () => {
+    try {
+      const result = await window.api.rag.importIndex({ mode: 'replace' });
+      if (result?.canceled) return;
+      renderRagStatus(result?.status || {});
+      showNotification(`RAG импортирован: ${result?.filePath || 'unknown file'}`, 'success');
+    } catch (err) {
+      showNotification('Ошибка импорта RAG: ' + err.message, 'error');
+    }
+  });
+
   // Settings
+  function loadUISettings() {
+    const savedFontSize = Number(localStorage.getItem('openclaw_font_size')) || 16;
+    const savedTheme = localStorage.getItem('openclaw_theme') || 'light';
+    const savedAutostart = localStorage.getItem('openclaw_autostart') === 'true';
+    const savedNotifications = localStorage.getItem('openclaw_notifications') !== 'false';
+    const savedSound = localStorage.getItem('openclaw_sound') !== 'false';
+    const savedGatewayPort = Number(localStorage.getItem('openclaw_gateway_port')) || 18789;
+    const savedCliPath = localStorage.getItem('openclaw_cli_path') || 'openclaw';
+    const savedChatAgentId = localStorage.getItem('openclaw_chat_agent_id') || '';
+    const savedChatSessionId = localStorage.getItem('openclaw_chat_session_id') || 'bratan-desktop-ui';
+    const savedChatThinking = localStorage.getItem('openclaw_chat_thinking') || 'medium';
+    const savedShowReasoning = localStorage.getItem('openclaw_chat_show_reasoning') !== 'false';
+
+    settingFontSize.value = savedFontSize;
+    fontSizeValue.textContent = `${savedFontSize}px`;
+    document.documentElement.style.fontSize = `${savedFontSize}px`;
+
+    document.getElementById('setting-theme').value = savedTheme;
+    document.getElementById('setting-autostart').checked = savedAutostart;
+    document.getElementById('setting-notifications').checked = savedNotifications;
+    document.getElementById('setting-sound').checked = savedSound;
+    document.getElementById('setting-gateway-port').value = String(savedGatewayPort);
+    document.getElementById('setting-cli-path').value = savedCliPath;
+
+    if (chatAgentIdInput) chatAgentIdInput.value = savedChatAgentId;
+    if (chatSessionIdInput) chatSessionIdInput.value = savedChatSessionId;
+    if (chatThinkingSelect) chatThinkingSelect.value = savedChatThinking;
+    if (chatShowReasoningCheckbox) chatShowReasoningCheckbox.checked = savedShowReasoning;
+
+    // Update gateway status if port changed
+    if (openClawWS && openClawWS.gatewayPort !== savedGatewayPort) {
+      openClawWS.disconnect();
+      openClawWS = null;
+      initOpenClawWebSocket();
+    }
+  }
+
   const settingFontSize = document.getElementById('setting-font-size');
   const fontSizeValue = document.getElementById('font-size-value');
   settingFontSize.addEventListener('input', () => {
@@ -285,7 +1216,28 @@ function initRenderer() {
   });
 
   document.getElementById('btn-save-settings').addEventListener('click', () => {
+    localStorage.setItem('openclaw_font_size', document.getElementById('setting-font-size').value);
+    localStorage.setItem('openclaw_theme', document.getElementById('setting-theme').value);
+    localStorage.setItem('openclaw_autostart', document.getElementById('setting-autostart').checked);
+    localStorage.setItem('openclaw_notifications', document.getElementById('setting-notifications').checked);
+    localStorage.setItem('openclaw_sound', document.getElementById('setting-sound').checked);
+    localStorage.setItem('openclaw_gateway_port', document.getElementById('setting-gateway-port').value);
+    localStorage.setItem('openclaw_cli_path', document.getElementById('setting-cli-path').value);
+
     showNotification('Настройки сохранены', 'success');
+
+    // Re-initialize WebSocket if port changed
+    const port = Number(document.getElementById('setting-gateway-port').value);
+    if (openClawWS && openClawWS.gatewayPort !== port) {
+      openClawWS.disconnect();
+      openClawWS = null;
+      initOpenClawWebSocket();
+    }
+
+    void syncOpenClawConfig().then(() => {
+      void initWorkspacePath().then(() => refreshFileList());
+      return refreshTransportStatus();
+    });
   });
 
   document.getElementById('btn-reset-settings').addEventListener('click', () => {
@@ -297,8 +1249,34 @@ function initRenderer() {
     document.getElementById('setting-sound').checked = true;
     document.getElementById('setting-theme').value = 'light';
     document.getElementById('setting-cli-path').value = 'openclaw';
-    document.getElementById('setting-gateway-port').value = '3000';
+    document.getElementById('setting-gateway-port').value = '18789';
+
+    localStorage.removeItem('openclaw_font_size');
+    localStorage.removeItem('openclaw_theme');
+    localStorage.removeItem('openclaw_autostart');
+    localStorage.removeItem('openclaw_notifications');
+    localStorage.removeItem('openclaw_sound');
+    localStorage.removeItem('openclaw_gateway_port');
+    localStorage.removeItem('openclaw_cli_path');
+    localStorage.removeItem('openclaw_chat_agent_id');
+    localStorage.removeItem('openclaw_chat_session_id');
+    localStorage.removeItem('openclaw_chat_thinking');
+    localStorage.removeItem('openclaw_chat_show_reasoning');
+
+    if (chatAgentIdInput) chatAgentIdInput.value = '';
+    if (chatSessionIdInput) chatSessionIdInput.value = 'bratan-desktop-ui';
+    if (chatThinkingSelect) chatThinkingSelect.value = 'medium';
+    if (chatShowReasoningCheckbox) chatShowReasoningCheckbox.checked = true;
+
     showNotification('Настройки сброшены', 'info');
+
+    openClawWS?.disconnect();
+    openClawWS = null;
+    initOpenClawWebSocket();
+    void syncOpenClawConfig().then(() => {
+      void initWorkspacePath().then(() => refreshFileList());
+      return refreshTransportStatus();
+    });
   });
 
   // Notifications
@@ -592,7 +1570,11 @@ function initRenderer() {
 
   // OpenClaw WebSocket real-time integration
   let openClawWS = null;
-  let lastMessageId = null;
+
+  function getSavedGatewayPort() {
+    const saved = Number(localStorage.getItem('openclaw_gateway_port'));
+    return Number.isInteger(saved) && saved > 0 ? saved : 18789;
+  }
 
   function initOpenClawWebSocket() {
     if (openClawWS) {
@@ -602,42 +1584,70 @@ function initRenderer() {
 
     try {
       openClawWS = new OpenClawWebSocket({
-        wsUrl: 'ws://localhost:8080',
+        gatewayPort: getSavedGatewayPort(),
         maxReconnectAttempts: 20,
         reconnectDelay: 1000,
         heartbeatInterval: 30000,
       });
 
-      openClawWS.on('open', () => {
+      openClawWS.on('open', async () => {
         console.log('OpenClaw WebSocket connected');
         updateConnectionStatus('connected');
+
+        try {
+          await openClawWS.hello();
+          const storedToken = localStorage.getItem('openclaw_auth_token');
+          if (storedToken) {
+            await openClawWS.auth(storedToken);
+            showNotification('OpenClaw авторизован', 'success');
+          }
+        } catch (err) {
+          console.warn('OpenClaw WebSocket auth failed:', err);
+          showNotification('Ошибка аутентификации OpenClaw', 'error');
+        }
       });
 
       openClawWS.on('close', () => {
         console.log('OpenClaw WebSocket disconnected');
-        updateConnectionStatus('disconnected');
+        void refreshTransportStatus();
       });
 
       openClawWS.on('error', (err) => {
         console.error('OpenClaw WebSocket error:', err);
-        updateConnectionStatus('error');
+        void refreshTransportStatus();
+      });
+
+      openClawWS.on('notification', (data) => {
+        const method = String(data?.method || '').toLowerCase();
+        if (method.includes('typing') || method.includes('progress') || method.includes('thinking')) {
+          const stageText = typeof data?.params === 'string' ? data.params : data?.params?.text || 'Агент готовит ответ...';
+          setChatLiveStatus(stageText, true);
+          updateTypingIndicator(stageText);
+          appendAgentTrace('WS progress', stageText);
+          return;
+        }
+
+        if (data.method === 'message' && data.params) {
+          const messageText = typeof data.params === 'string' ? data.params : data.params.text || JSON.stringify(data.params);
+          addMessage('Братан', messageText);
+          stopTypingIndicator();
+          setChatLiveStatus('', false);
+          appendAgentTrace('WS notification', `chars=${messageText.length}`);
+        }
       });
 
       openClawWS.on('message', (data) => {
-        // Handle incoming messages from OpenClaw
-        if (data.type === 'message' && data.payload) {
-          const message = typeof data.payload === 'string' ? data.payload : data.payload.text;
-          const sender = data.sender || 'Братан';
-          if (data.id !== lastMessageId) {
-            addMessage(sender, message);
-            lastMessageId = data.id;
-          }
-        }
+        // Raw messages for debug, keep history
+        console.log('OpenClaw raw message:', data);
       });
 
       openClawWS.on('statusChange', ({ previous, current }) => {
         console.log(`OpenClaw WebSocket status changed: ${previous} -> ${current}`);
-        updateConnectionStatus(current);
+        if (current === 'connected' || current === 'connecting' || current === 'offline') {
+          updateConnectionStatus(current);
+        } else {
+          void refreshTransportStatus();
+        }
       });
 
       openClawWS.connect();
@@ -658,6 +1668,7 @@ function initRenderer() {
     const statusText = {
       connecting: 'Подключение...',
       connected: 'Онлайн',
+      cli: 'Онлайн через CLI',
       disconnected: 'Офлайн',
       offline: 'Офлайн (сообщения в очереди)',
       error: 'Ошибка подключения',
@@ -670,6 +1681,8 @@ function initRenderer() {
     // Color coding
     if (status === 'connected') {
       statusEl.classList.add('bg-green-100', 'text-green-800');
+    } else if (status === 'cli') {
+      statusEl.classList.add('bg-blue-100', 'text-blue-800');
     } else if (status === 'connecting') {
       statusEl.classList.add('bg-yellow-100', 'text-yellow-800');
     } else if (status === 'offline') {
@@ -679,13 +1692,13 @@ function initRenderer() {
     }
   }
 
-  // Initialize WebSocket connection
-  initOpenClawWebSocket();
-
   // Graceful shutdown on window close
   window.addEventListener('beforeunload', () => {
     if (openClawWS) {
       openClawWS.disconnect();
+    }
+    if (window.api && typeof window.api.removeOpenClawStreamListener === 'function') {
+      window.api.removeOpenClawStreamListener();
     }
   });
 
@@ -734,15 +1747,28 @@ function initRenderer() {
   updateTaskMonitor();
 
   // Initialize
-  initWorkspacePath().then(() => refreshFileList());
+  loadUISettings();
+  renderChatAttachments();
+  renderRagSelectedFiles();
+  if (chatReasoningOutput) chatReasoningOutput.textContent = 'Reasoning появится после следующего ответа агента.';
+  if (agentReasoningOutput) agentReasoningOutput.textContent = 'Reasoning появится после следующего ответа агента.';
+  if (agentTraceLog) agentTraceLog.innerHTML = '<div class="text-xs text-gray-500">Trace пока пуст</div>';
+
+  void syncOpenClawConfig().then(() => {
+    initOpenClawWebSocket();
+    void initWorkspacePath().then(() => refreshFileList());
+    void refreshTransportStatus();
+    void refreshAgentRuntime();
+    void refreshRagStatus();
+  });
   updateGatewayStatus(false);
   showNotification('Братан Desktop запущен', 'info');
 
   // Keyboard shortcuts for accessibility
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key >= '1' && e.key <= '7') {
+    if (e.ctrlKey && e.key >= '1' && e.key <= '8') {
       const tabIndex = parseInt(e.key) - 1;
-      const tabs = ['chat', 'logs', 'files', 'editor', 'agents', 'integrations', 'settings'];
+      const tabs = ['chat', 'logs', 'files', 'editor', 'agents', 'rag', 'integrations', 'settings'];
       const tabId = tabs[tabIndex];
       const tabButton = document.getElementById('tab-' + tabId);
       if (tabButton) {

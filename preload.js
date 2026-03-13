@@ -6,11 +6,26 @@ contextBridge.exposeInMainWorld('api', {
   openclaw: {
     start: () => ipcRenderer.invoke('openclaw-start'),
     stop: () => ipcRenderer.invoke('openclaw-stop'),
-    status: () => ipcRenderer.invoke('openclaw-status'),
+    status: (options) => ipcRenderer.invoke('openclaw-status', options),
+    configure: (config) => ipcRenderer.invoke('openclaw-configure', config),
     sendMessage: (message) => ipcRenderer.invoke('openclaw-send-message', message),
     getMessages: () => ipcRenderer.invoke('openclaw-get-messages'),
+    pickFiles: (options) => ipcRenderer.invoke('openclaw-pick-files', options),
+    listSessions: () => ipcRenderer.invoke('openclaw-list-sessions'),
+    listAgents: () => ipcRenderer.invoke('openclaw-list-agents'),
+  },
+  rag: {
+    pickFiles: (options) => ipcRenderer.invoke('rag-pick-files', options),
+    indexFiles: (payload) => ipcRenderer.invoke('rag-index-files', payload),
+    status: () => ipcRenderer.invoke('rag-status'),
+    search: (payload) => ipcRenderer.invoke('rag-search', payload),
+    ask: (payload) => ipcRenderer.invoke('rag-ask', payload),
+    clear: () => ipcRenderer.invoke('rag-clear'),
+    exportIndex: (payload) => ipcRenderer.invoke('rag-export', payload),
+    importIndex: (payload) => ipcRenderer.invoke('rag-import', payload),
   },
   fs: {
+    listDir: (path) => ipcRenderer.invoke('fs-list-dir', path),
     openFolder: (path) => ipcRenderer.invoke('open-folder', path),
     readFile: (path) => ipcRenderer.invoke('fs-read-file', path),
     writeFile: (path, content) => ipcRenderer.invoke('fs-write-file', path, content),
@@ -45,8 +60,14 @@ contextBridge.exposeInMainWorld('api', {
   onOpenClawLog: (callback) => {
     ipcRenderer.on('openclaw-log', (event, data) => callback(data));
   },
+  onOpenClawStream: (callback) => {
+    ipcRenderer.on('openclaw-stream', (event, data) => callback(data));
+  },
   removeOpenClawLogListener: () => {
     ipcRenderer.removeAllListeners('openclaw-log');
+  },
+  removeOpenClawStreamListener: () => {
+    ipcRenderer.removeAllListeners('openclaw-stream');
   },
   log: (level, message) => {
     ipcRenderer.send('renderer-log', { level, message });

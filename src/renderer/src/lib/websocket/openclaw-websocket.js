@@ -8,7 +8,10 @@
 
   class OpenClawWebSocket {
     constructor(options = {}) {
-      this.wsUrl = options.wsUrl || 'ws://localhost:8080';
+      this.gatewayPort = options.gatewayPort || 18789;
+      this.wsUrl = options.wsUrl || `ws://localhost:${this.gatewayPort}`;
+      this.requestId = 0;
+      this.pendingRequests = new Map();
       this.reconnectAttempts = 0;
       this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
       this.reconnectDelay = options.reconnectDelay || 1000; // ms
@@ -27,6 +30,7 @@
         error: [],
         reconnect: [],
         statusChange: [],
+        notification: [],
       };
 
       this.storageKey = 'openclaw_chat_history';
@@ -41,9 +45,72 @@
 
     // ==================== Public API ====================
 
-    /**
-     * Connect to WebSocket server.
-     */
+    async hello(features = ['call', 'subscribe', 'auth']) {
+      return this.call('hello', {
+        version: '1.0',
+        features,
+        device: { name: 'OpenClaw Desktop', type: 'electron' },
+      });
+    }
+
+    async auth(token, mode = 'token') {
+      return this.call('auth', { token, mode });
+    }
+
+    async call(method, params = {}) {
+      const id = `rpc_${++this.requestId}`;
+      const request = {
+        id,
+        type: 'request',
+        method,
+        params,
+      };
+
+      const promise = new Promise((resolve, reject) => {
+        this.pendingRequests.set(id, { resolve, reject });
+      });
+
+      if (this.isConnected) {
+        this._sendRaw(request);
+      } else {
+        this._enqueue(request);
+      }
+
+      return promise;
+    }
+
+    async sessionsCreate(config = {}) {
+      return this.call('sessions.create', config);
+    }
+
+    async sessionsList() {
+      return this.call('sessions.list', {});
+    }
+
+    async sessionsSwitch(sessionId) {
+      return this.call('sessions.switch', { sessionId });
+    }
+
+    async sessionsClose(sessionId) {
+      return this.call('sessions.close', { sessionId });
+    }
+
+    async subscribe(agent, event) {
+      return this.call('subscribe', { agent, event });
+    }
+
+    async unsubscribe(agent, event) {
+      return this.call('unsubscribe', { agent, event });
+    }
+
+    async callAgent(agent, method, params = {}) {
+      const payload = { method, params };
+      if (agent) {
+        payload.agent = agent;
+      }
+      return this.call('call', payload);
+    }
+
     connect() {
       if (this.isConnecting || this.isConnected) {
         console.warn('OpenClawWebSocket: Already connecting or connected');
@@ -184,6 +251,26 @@
       try {
         const data = JSON.parse(event.data);
         this._storeInHistory(data);
+
+        // JSON-RPC response handling
+        if (data.type === 'response' && data.id) {
+          const pending = this.pendingRequests.get(data.id);
+          if (pending) {
+            this.pendingRequests.delete(data.id);
+            if (data.error) {
+              pending.reject(new Error(data.error.message || JSON.stringify(data.error)));
+            } else {
+              pending.resolve(data.result);
+            }
+            return;
+          }
+        }
+
+        if (data.type === 'notification') {
+          this._emit('notification', data);
+          return;
+        }
+
         this._emit('message', data);
 
         // Reset heartbeat on any incoming message
@@ -203,13 +290,15 @@
     _sendRaw(message) {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         try {
-          this.socket.send(JSON.stringify(message));
-          message.status = 'sent';
-          message.sentAt = Date.now();
-          this._storeInHistory(message);
+          this.socket.send(typeof message === 'string' ? message : JSON.stringify(message));
+          if (typeof message === 'object') {
+            message.status = 'sent';
+            message.sentAt = Date.now();
+            this._storeInHistory(message);
+          }
         } catch (err) {
           console.error('OpenClawWebSocket: Send error', err);
-          message.status = 'error';
+          if (typeof message === 'object') message.status = 'error';
           this._enqueue(message); // requeue
         }
       } else {

@@ -10,7 +10,7 @@ const {
   dialog,
 } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const logger = require('./logger');
@@ -33,12 +33,16 @@ logger.info('Main process starting...');
 
 process.on('uncaughtException', (err) => {
   logger.error(`uncaughtException: ${err.stack || err.message}`);
-  dialog.showErrorBox('Critical Error', `Uncaught exception:\n${err.stack || err.message}`);
+  if (dialog && typeof dialog.showErrorBox === 'function') {
+    dialog.showErrorBox('Critical Error', `Uncaught exception:\n${err.stack || err.message}`);
+  }
 });
 
 process.on('unhandledRejection', (reason) => {
   logger.error(`unhandledRejection: ${reason}`);
-  dialog.showErrorBox('Unhandled Promise Rejection', `Unhandled rejection:\n${reason}`);
+  if (dialog && typeof dialog.showErrorBox === 'function') {
+    dialog.showErrorBox('Unhandled Promise Rejection', `Unhandled rejection:\n${reason}`);
+  }
 });
 
 function toggleWindowVisibility(section) {
@@ -108,17 +112,21 @@ async function createWindow() {
     if (!mainWindow.isVisible()) mainWindow.show();
   });
 
-  mainWindow.webContents.on('did-finish-load', () => {
-    logger.info('WebContents did-finish-load');
-    if (!mainWindow.isVisible()) mainWindow.show();
-  });
+  if (mainWindow.webContents && typeof mainWindow.webContents.on === 'function') {
+    mainWindow.webContents.on('did-finish-load', () => {
+      logger.info('WebContents did-finish-load');
+      if (!mainWindow.isVisible()) mainWindow.show();
+    });
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    const message = `Не удалось загрузить интерфейс (${errorCode}: ${errorDescription}) ${validatedURL}`;
-    logger.error(message);
-    showError('Ошибка загрузки интерфейса', message);
-    if (!mainWindow.isVisible()) mainWindow.show();
-  });
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      const message = `Не удалось загрузить интерфейс (${errorCode}: ${errorDescription}) ${validatedURL}`;
+      logger.error(message);
+      showError('Ошибка загрузки интерфейса', message);
+      if (!mainWindow.isVisible()) mainWindow.show();
+    });
+  } else {
+    logger.warn('mainWindow.webContents unavailable; skipping did-finish-load/did-fail-load handlers');
+  }
 
   mainWindow.webContents.on('crashed', () => {
     const err = 'WebContents crashed';
@@ -309,48 +317,1357 @@ function showAbout() {
   }).show();
 }
 
-function startOpenClawGateway() {
+const DEFAULT_OPENCLAW_COMMAND = process.platform === 'win32' ? 'openclaw.exe' : 'openclaw';
+const DEFAULT_OPENCLAW_CHAT_SESSION_ID = 'bratan-desktop-ui';
+const openClawRuntimeConfig = {
+  cliPath: null,
+  gatewayPort: 18789,
+};
+const MAX_CHAT_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_PREVIEW_CHARS = 16000;
+const MAX_ATTACHMENT_TOTAL_CHARS = 50000;
+const RAG_STORE_FILENAME = 'rag-index.json';
+const RAG_STORE_VERSION = 1;
+const RAG_CHUNK_SIZE = 1200;
+const RAG_CHUNK_OVERLAP = 200;
+
+let ragStoreCache = null;
+
+function updateOpenClawRuntimeConfig(config = {}) {
+  if (!config || typeof config !== 'object') {
+    return { ...openClawRuntimeConfig };
+  }
+
+  if (typeof config.cliPath === 'string') {
+    const cliPath = config.cliPath.trim();
+    openClawRuntimeConfig.cliPath = cliPath || null;
+  }
+
+  if (config.gatewayPort !== undefined && config.gatewayPort !== null) {
+    const gatewayPort = Number(config.gatewayPort);
+    if (Number.isInteger(gatewayPort) && gatewayPort > 0) {
+      openClawRuntimeConfig.gatewayPort = gatewayPort;
+    }
+  }
+
+  return { ...openClawRuntimeConfig };
+}
+
+function getOpenClawGatewayUrl() {
+  return `ws://127.0.0.1:${openClawRuntimeConfig.gatewayPort}`;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function stripKnownCliNoise(text = '') {
+  return String(text)
+    .split(/\r?\n/)
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return false;
+      return !(
+        /^wsl:/i.test(trimmed) ||
+        (/^wsl:/i.test(trimmed) && trimmed.toLowerCase().includes('localhost')) ||
+        (trimmed.includes('WSL') && trimmed.toLowerCase().includes('localhost')) ||
+        trimmed.includes('Конфигурация прокси-сервера localhost обнаружена') ||
+        trimmed.includes('WSL в режиме NAT не поддерживает прокси-серверы localhost')
+      );
+    })
+    .join('\n')
+    .trim();
+}
+
+function summarizeOpenClawFailure(text = '') {
+  const cleaned = stripKnownCliNoise(text);
+  if (!cleaned) {
+    return '';
+  }
+
+  const lines = cleaned
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !line.startsWith('[tools]') &&
+        !line.startsWith('[agent/embedded]') &&
+        !line.startsWith('[diagnostic]') &&
+        !line.startsWith('[compaction-safeguard]')
+    );
+
+  const allModelsLine = lines.find((line) => line.includes('All models failed'));
+  if (allModelsLine) {
+    return allModelsLine;
+  }
+
+  const authLine = lines.find(
+    (line) =>
+      line.toLowerCase().includes('auth issue') ||
+      line.toLowerCase().includes('forbidden') ||
+      line.toLowerCase().includes('request not allowed')
+  );
+  if (authLine) {
+    return authLine;
+  }
+
+  const timeoutLine = lines.find((line) => line.toLowerCase().includes('timed out'));
+  if (timeoutLine) {
+    return timeoutLine;
+  }
+
+  return lines.slice(0, 3).join(' | ');
+}
+
+function parseJsonFromText(text) {
+  const source = String(text || '').trim();
+  if (!source) return null;
+
+  try {
+    return JSON.parse(source);
+  } catch {
+    // recover from banners and extra lines
+  }
+
+  const lines = source.split(/\r?\n/).filter((line) => line.trim());
+  for (let start = 0; start < lines.length; start += 1) {
+    try {
+      return JSON.parse(lines.slice(start).join('\n'));
+    } catch {
+      // continue
+    }
+  }
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    try {
+      return JSON.parse(lines[index]);
+    } catch {
+      // continue
+    }
+  }
+
+  return null;
+}
+
+function isTransientModelFailureText(text) {
+  const normalized = String(text || '').trim().toLowerCase();
+  if (!normalized) return true;
+
+  return (
+    normalized.includes('llm request timed out') ||
+    normalized.includes('all models failed') ||
+    normalized.includes('provider auth issue') ||
+    normalized.includes('request not allowed') ||
+    normalized.includes('forbidden') ||
+    normalized === 'timed out' ||
+    normalized === 'timeout'
+  );
+}
+
+function pickPreferredOpenClawText(texts) {
+  const cleaned = texts.map((text) => String(text || '').trim()).filter(Boolean);
+  if (!cleaned.length) {
+    return '';
+  }
+
+  const nonFailure = cleaned.filter((text) => !isTransientModelFailureText(text));
+  const preferred = nonFailure.length ? nonFailure[nonFailure.length - 1] : cleaned[cleaned.length - 1];
+  return preferred || '';
+}
+
+function extractOpenClawText(payload) {
+  if (payload === null || payload === undefined) return '';
+  if (typeof payload === 'string') return payload;
+
+  if (Array.isArray(payload)) {
+    return pickPreferredOpenClawText(payload.map((entry) => extractOpenClawText(entry)));
+  }
+
+  if (payload && typeof payload === 'object' && Array.isArray(payload.payloads)) {
+    const payloadText = pickPreferredOpenClawText(
+      payload.payloads.map((entry) => (entry && typeof entry.text === 'string' ? entry.text : extractOpenClawText(entry)))
+    );
+    if (payloadText) {
+      return payloadText;
+    }
+  }
+
+  const preferredKeys = ['output', 'message', 'text', 'content', 'reply'];
+  for (const key of preferredKeys) {
+    if (typeof payload[key] === 'string' && payload[key].trim()) {
+      return payload[key];
+    }
+  }
+
+  const nestedKeys = ['result', 'final', 'data'];
+  for (const key of nestedKeys) {
+    if (payload[key] !== undefined) {
+      const nestedText = extractOpenClawText(payload[key]);
+      if (nestedText) return nestedText;
+    }
+  }
+
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return String(payload);
+  }
+}
+
+const TEXT_FILE_EXTENSIONS = new Set([
+  '.txt',
+  '.md',
+  '.json',
+  '.js',
+  '.ts',
+  '.tsx',
+  '.jsx',
+  '.css',
+  '.html',
+  '.xml',
+  '.yml',
+  '.yaml',
+  '.csv',
+  '.py',
+  '.java',
+  '.go',
+  '.rs',
+  '.sql',
+  '.ini',
+  '.toml',
+  '.env',
+  '.log',
+]);
+
+function detectMimeTypeByExtension(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeMap = {
+    '.txt': 'text/plain',
+    '.md': 'text/markdown',
+    '.json': 'application/json',
+    '.js': 'application/javascript',
+    '.ts': 'application/typescript',
+    '.tsx': 'application/typescript',
+    '.jsx': 'application/javascript',
+    '.css': 'text/css',
+    '.html': 'text/html',
+    '.xml': 'application/xml',
+    '.yml': 'text/yaml',
+    '.yaml': 'text/yaml',
+    '.csv': 'text/csv',
+    '.py': 'text/x-python',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
+
+function isTextFileExtension(filePath) {
+  return TEXT_FILE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+function getRagStorePath() {
+  return path.join(appDataPath, RAG_STORE_FILENAME);
+}
+
+function createEmptyRagStore() {
+  return {
+    version: RAG_STORE_VERSION,
+    updatedAt: new Date().toISOString(),
+    documents: [],
+    chunks: [],
+  };
+}
+
+function normalizeRagStorePayload(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return createEmptyRagStore();
+  }
+
+  return {
+    version: payload.version || RAG_STORE_VERSION,
+    updatedAt: payload.updatedAt || new Date().toISOString(),
+    documents: Array.isArray(payload.documents) ? payload.documents : [],
+    chunks: Array.isArray(payload.chunks) ? payload.chunks : [],
+  };
+}
+
+function ensureRagStoreLoaded() {
+  if (ragStoreCache) {
+    return ragStoreCache;
+  }
+
+  const storePath = getRagStorePath();
+  try {
+    if (fs.existsSync(storePath)) {
+      const parsed = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+      ragStoreCache = normalizeRagStorePayload(parsed);
+    } else {
+      ragStoreCache = createEmptyRagStore();
+    }
+  } catch (err) {
+    logger.warn(`Failed to load RAG store: ${err.message}`);
+    ragStoreCache = createEmptyRagStore();
+  }
+
+  return ragStoreCache;
+}
+
+function saveRagStore() {
+  const store = ensureRagStoreLoaded();
+  store.updatedAt = new Date().toISOString();
+  const storePath = getRagStorePath();
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf8');
+  return store;
+}
+
+function tokenizeRagText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}_-]+/gu, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 2)
+    .slice(0, 5000);
+}
+
+function normalizeCollectionName(value) {
+  const raw = String(value || 'default').trim();
+  if (!raw) return 'default';
+  return raw.slice(0, 80);
+}
+
+function splitTextToChunks(text, chunkSize = RAG_CHUNK_SIZE, overlap = RAG_CHUNK_OVERLAP) {
+  const source = String(text || '').trim();
+  if (!source) return [];
+
+  const chunks = [];
+  let start = 0;
+  while (start < source.length) {
+    const end = Math.min(source.length, start + chunkSize);
+    const chunkText = source.slice(start, end).trim();
+    if (chunkText) {
+      chunks.push(chunkText);
+    }
+    if (end >= source.length) {
+      break;
+    }
+    start = Math.max(end - overlap, start + 1);
+  }
+
+  return chunks;
+}
+
+async function readFileForContext(filePath, options = {}) {
+  const maxChars = Number.isInteger(options.maxChars) && options.maxChars > 0 ? options.maxChars : MAX_ATTACHMENT_PREVIEW_CHARS;
+  const resolved = path.resolve(String(filePath || ''));
+  const stats = await fs.promises.stat(resolved);
+  const ext = path.extname(resolved).toLowerCase();
+
+  let content = '';
+  let extraction = 'none';
+
+  if (ext === '.pdf' && taskManager && typeof taskManager.analyzePDF === 'function') {
+    try {
+      const pdfData = await taskManager.analyzePDF(resolved, { pages: '1-5', ocr: false });
+      content = String(pdfData.rawText || '');
+      extraction = 'pdf';
+    } catch (err) {
+      logger.warn(`PDF extraction failed for ${resolved}: ${err.message}`);
+    }
+  }
+
+  if (!content && isTextFileExtension(resolved)) {
+    content = await fs.promises.readFile(resolved, 'utf8');
+    extraction = 'text';
+  }
+
+  const normalized = String(content || '').replace(/\u0000/g, '');
+  const truncated = normalized.length > maxChars;
+  const preview = truncated ? normalized.slice(0, maxChars) : normalized;
+
+  return {
+    name: path.basename(resolved),
+    path: resolved,
+    size: stats.size,
+    ext,
+    mime: detectMimeTypeByExtension(resolved),
+    preview,
+    truncated,
+    hasText: Boolean(preview.trim()),
+    extraction,
+  };
+}
+
+function buildAttachmentPrompt(baseText, attachments) {
+  const cleanText = String(baseText || '').trim();
+  if (!attachments || !attachments.length) {
+    return cleanText;
+  }
+
+  let remainingChars = MAX_ATTACHMENT_TOTAL_CHARS;
+  const sections = attachments.map((attachment, index) => {
+    const header = `Файл ${index + 1}: ${attachment.name} (${attachment.size} bytes, ${attachment.mime})`;
+    if (!attachment.hasText || remainingChars <= 0) {
+      return `${header}\n[Текст не извлечён автоматически. Используйте имя/тип файла как контекст.]`;
+    }
+
+    const snippet = attachment.preview.slice(0, Math.max(0, remainingChars));
+    remainingChars -= snippet.length;
+    const suffix = attachment.truncated || snippet.length < attachment.preview.length ? '\n...[обрезано]' : '';
+    return `${header}\n${snippet}${suffix}`;
+  });
+
+  return [
+    cleanText,
+    '',
+    '---',
+    'Пользователь приложил файлы. Используй содержимое ниже как дополнительный контекст:',
+    sections.join('\n\n---\n\n'),
+  ].join('\n');
+}
+
+function extractOpenClawReasoning(payload) {
+  const reasoningKeys = new Set(['reasoning', 'analysis', 'thinking', 'thoughts', 'rationale', 'plan', 'trace']);
+  const collected = [];
+  const visited = new Set();
+  const stack = [payload];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== 'object') {
+      continue;
+    }
+
+    if (visited.has(current)) {
+      continue;
+    }
+    visited.add(current);
+
+    if (Array.isArray(current)) {
+      current.forEach((entry) => stack.push(entry));
+      continue;
+    }
+
+    Object.entries(current).forEach(([key, value]) => {
+      const normalizedKey = String(key || '').toLowerCase();
+      if (typeof value === 'string' && value.trim() && reasoningKeys.has(normalizedKey)) {
+        collected.push(value.trim());
+      }
+
+      if (value && typeof value === 'object') {
+        stack.push(value);
+      }
+    });
+  }
+
+  return Array.from(new Set(collected)).slice(0, 8);
+}
+
+function extractOpenClawMeta(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  if (payload.meta && typeof payload.meta === 'object') {
+    return payload.meta;
+  }
+
+  if (payload.result && payload.result.meta && typeof payload.result.meta === 'object') {
+    return payload.result.meta;
+  }
+
+  return null;
+}
+
+async function pickFilesFromDialog(options = {}) {
+  if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+    throw new Error('File dialog API is unavailable.');
+  }
+
+  const result = await dialog.showOpenDialog(mainWindow || undefined, {
+    title: options.title || 'Выберите файлы',
+    properties: ['openFile', ...(options.multi === false ? [] : ['multiSelections'])],
+  });
+
+  if (result.canceled) {
+    return [];
+  }
+
+  return Promise.all(
+    result.filePaths.map(async (filePath) => {
+      try {
+        const stats = await fs.promises.stat(filePath);
+        return {
+          path: filePath,
+          name: path.basename(filePath),
+          size: stats.size,
+          mime: detectMimeTypeByExtension(filePath),
+        };
+      } catch {
+        return {
+          path: filePath,
+          name: path.basename(filePath),
+          size: 0,
+          mime: detectMimeTypeByExtension(filePath),
+        };
+      }
+    })
+  );
+}
+
+function normalizeAttachmentPaths(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const paths = input
+    .map((entry) => {
+      if (!entry) return '';
+      if (typeof entry === 'string') return entry;
+      if (typeof entry.path === 'string') return entry.path;
+      return '';
+    })
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(paths)).slice(0, MAX_CHAT_ATTACHMENTS);
+}
+
+async function prepareAttachmentContexts(attachments) {
+  const attachmentPaths = normalizeAttachmentPaths(attachments);
+  if (!attachmentPaths.length) {
+    return [];
+  }
+
+  const prepared = [];
+  for (const filePath of attachmentPaths) {
+    try {
+      const context = await readFileForContext(filePath, { maxChars: MAX_ATTACHMENT_PREVIEW_CHARS });
+      prepared.push(context);
+    } catch (err) {
+      prepared.push({
+        name: path.basename(filePath),
+        path: filePath,
+        size: 0,
+        ext: path.extname(filePath).toLowerCase(),
+        mime: detectMimeTypeByExtension(filePath),
+        preview: '',
+        truncated: false,
+        hasText: false,
+        extraction: 'error',
+        error: err.message,
+      });
+    }
+  }
+
+  return prepared;
+}
+
+function emitOpenClawStream(update) {
+  if (!mainWindow || !mainWindow.webContents) {
+    return;
+  }
+
+  try {
+    mainWindow.webContents.send('openclaw-stream', update);
+  } catch (err) {
+    logger.warn(`Failed to emit openclaw-stream: ${err.message}`);
+  }
+}
+
+async function runOpenClawAgentTurn(payload = {}) {
+  const request = typeof payload === 'string' ? { text: payload } : payload || {};
+  const requestId = typeof request.requestId === 'string' && request.requestId.trim()
+    ? request.requestId.trim()
+    : `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const text = String(request.text || request.message || '').trim();
+  const agentId = typeof request.agentId === 'string' ? request.agentId.trim() : '';
+  const sessionId =
+    typeof request.sessionId === 'string' && request.sessionId.trim()
+      ? request.sessionId.trim()
+      : DEFAULT_OPENCLAW_CHAT_SESSION_ID;
+  const thinking = ['off', 'minimal', 'low', 'medium', 'high'].includes(String(request.thinking || '').toLowerCase())
+    ? String(request.thinking).toLowerCase()
+    : null;
+  const timeoutSeconds = Number.isInteger(Number(request.timeoutSeconds)) && Number(request.timeoutSeconds) > 0
+    ? Number(request.timeoutSeconds)
+    : 120;
+
+  if (!text) {
+    throw new Error('Пустое сообщение');
+  }
+
+  emitOpenClawStream({
+    requestId,
+    phase: 'queued',
+    message: 'Запрос получен и поставлен в обработку.',
+  });
+
+  try {
+    const attachmentContexts = await prepareAttachmentContexts(request.attachments);
+    const messageForAgent = buildAttachmentPrompt(text, attachmentContexts).slice(0, 120000);
+
+    emitOpenClawStream({
+      requestId,
+      phase: 'context-prepared',
+      message: `Контекст подготовлен. Вложений: ${attachmentContexts.length}`,
+    });
+
+    await ensureGatewayRunning();
+
+    emitOpenClawStream({
+      requestId,
+      phase: 'gateway-ready',
+      message: 'Gateway доступен. Отправляю запрос в модель.',
+    });
+
+    const agentArgs = ['agent'];
+    if (agentId) {
+      agentArgs.push('--agent', agentId);
+    }
+
+    if (thinking) {
+      agentArgs.push('--thinking', thinking);
+    }
+
+    agentArgs.push('--session-id', sessionId, '--timeout', String(timeoutSeconds), '--message', messageForAgent, '--json');
+
+    let streamChunks = 0;
+    const emitChunk = (source, chunk) => {
+      const cleaned = stripKnownCliNoise(chunk);
+      if (!cleaned) return;
+
+      streamChunks += 1;
+      emitOpenClawStream({
+        requestId,
+        phase: source === 'stdout' ? 'stdout' : 'stderr',
+        source,
+        chunk: cleaned,
+        streamedChunks: streamChunks,
+      });
+    };
+
+    const result = await runOpenClawCommand(agentArgs, {
+      timeoutMs: Math.max(180000, (timeoutSeconds + 20) * 1000),
+      onStdoutData: (chunk) => emitChunk('stdout', chunk),
+      onStderrData: (chunk) => emitChunk('stderr', chunk),
+    });
+
+    if (result.code !== 0) {
+      if (result.timedOut) {
+        emitOpenClawStream({
+          requestId,
+          phase: 'error',
+          message: 'Таймаут выполнения запроса в OpenClaw.',
+        });
+        throw new Error('OpenClaw call timed out in the desktop app. Проверьте провайдера модели или уменьшите нагрузку.');
+      }
+
+      const details = summarizeOpenClawFailure(result.output || `${result.stdout}\n${result.stderr}`);
+      const exitState = result.code !== null && result.code !== undefined
+        ? String(result.code)
+        : result.signal
+          ? `signal ${result.signal}`
+          : 'unknown';
+      emitOpenClawStream({
+        requestId,
+        phase: 'error',
+        message: `Ошибка OpenClaw (${exitState}): ${details || 'unknown error'}`,
+      });
+      throw new Error(`OpenClaw call failed (${exitState}): ${details || 'unknown error'}`);
+    }
+
+    const parsed = parseJsonFromText(result.stdout || result.output);
+    const output = extractOpenClawText(parsed || result.stdout || result.output);
+    const reasoning = extractOpenClawReasoning(parsed || {});
+    const meta = extractOpenClawMeta(parsed || {});
+
+    emitOpenClawStream({
+      requestId,
+      phase: 'completed',
+      message: 'Ответ полностью получен.',
+      output,
+      reasoning,
+      meta,
+      streamedChunks: streamChunks,
+    });
+
+    return {
+      success: true,
+      requestId,
+      output: output || 'Ответ получен, но не удалось извлечь текст.',
+      reasoning,
+      meta,
+      attachments: attachmentContexts.map((attachment) => ({
+        name: attachment.name,
+        path: attachment.path,
+        size: attachment.size,
+        mime: attachment.mime,
+        extracted: attachment.extraction,
+        hasText: attachment.hasText,
+        error: attachment.error || null,
+      })),
+      raw: parsed || result.stdout || result.output,
+    };
+  } catch (err) {
+    emitOpenClawStream({
+      requestId,
+      phase: 'error',
+      message: err.message || 'Неизвестная ошибка выполнения запроса.',
+    });
+    throw err;
+  }
+}
+
+function scoreRagChunk(queryTokens, chunk) {
+  if (!queryTokens.length || !chunk || !Array.isArray(chunk.tokens)) {
+    return 0;
+  }
+
+  const tokenSet = new Set(chunk.tokens);
+  let score = 0;
+  queryTokens.forEach((token) => {
+    if (tokenSet.has(token)) {
+      score += 2;
+    } else if (typeof chunk.text === 'string' && chunk.text.toLowerCase().includes(token)) {
+      score += 1;
+    }
+  });
+
+  return score;
+}
+
+function getRagStatus() {
+  const store = ensureRagStoreLoaded();
+  const collectionMap = new Map();
+  store.documents.forEach((doc) => {
+    const collection = normalizeCollectionName(doc.collection || 'default');
+    const current = collectionMap.get(collection) || 0;
+    collectionMap.set(collection, current + 1);
+  });
+
+  return {
+    version: store.version,
+    updatedAt: store.updatedAt,
+    documentsCount: store.documents.length,
+    chunksCount: store.chunks.length,
+    collections: Array.from(collectionMap.entries())
+      .map(([name, documents]) => ({ name, documents }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+    documents: store.documents.map((doc) => ({
+      id: doc.id,
+      name: doc.name,
+      collection: normalizeCollectionName(doc.collection || 'default'),
+      path: doc.path,
+      size: doc.size,
+      chunks: doc.chunks,
+      updatedAt: doc.updatedAt,
+    })),
+  };
+}
+
+async function indexFilesToRag(filePaths, options = {}) {
+  const store = ensureRagStoreLoaded();
+  const sourceFiles = Array.isArray(filePaths) ? filePaths : options.files || [];
+  const normalizedPaths = normalizeAttachmentPaths(sourceFiles);
+  const collection = normalizeCollectionName(options.collection || 'default');
+
+  if (!normalizedPaths.length) {
+    return { indexed: 0, skipped: 0, errors: ['Нет файлов для индексации.'], status: getRagStatus() };
+  }
+
+  let indexed = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const filePath of normalizedPaths) {
+    try {
+      const fileData = await readFileForContext(filePath, { maxChars: 250000 });
+      const chunkTexts = splitTextToChunks(fileData.preview, RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP);
+      if (!chunkTexts.length) {
+        skipped += 1;
+        continue;
+      }
+
+      const docKey = `${collection}::${path.resolve(filePath)}`;
+      const docId = `doc_${Buffer.from(docKey).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 32)}`;
+      store.documents = store.documents.filter((doc) => doc.id !== docId);
+      store.chunks = store.chunks.filter((chunk) => chunk.docId !== docId);
+
+      const nowIso = new Date().toISOString();
+      const newChunks = chunkTexts.map((chunkText, index) => ({
+        id: `${docId}_chunk_${index + 1}`,
+        docId,
+        collection,
+        path: fileData.path,
+        name: fileData.name,
+        index,
+        text: chunkText,
+        tokens: Array.from(new Set(tokenizeRagText(chunkText))).slice(0, 300),
+      }));
+
+      store.documents.push({
+        id: docId,
+        name: fileData.name,
+        collection,
+        path: fileData.path,
+        size: fileData.size,
+        mime: fileData.mime,
+        chunks: newChunks.length,
+        updatedAt: nowIso,
+      });
+      store.chunks.push(...newChunks);
+      indexed += 1;
+    } catch (err) {
+      errors.push(`${path.basename(filePath)}: ${err.message}`);
+    }
+  }
+
+  saveRagStore();
+
+  return {
+    indexed,
+    skipped,
+    errors,
+    status: getRagStatus(),
+  };
+}
+
+function searchRag(query, options = {}) {
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery) {
+    return [];
+  }
+
+  const limit = Number.isInteger(Number(options.topK)) && Number(options.topK) > 0 ? Number(options.topK) : 5;
+  const collection = normalizeCollectionName(options.collection || 'all');
+  const store = ensureRagStoreLoaded();
+  const queryTokens = Array.from(new Set(tokenizeRagText(cleanQuery))).slice(0, 60);
+
+  return store.chunks
+    .filter((chunk) => collection === 'all' || normalizeCollectionName(chunk.collection || 'default') === collection)
+    .map((chunk) => ({
+      ...chunk,
+      score: scoreRagChunk(queryTokens, chunk),
+    }))
+    .filter((chunk) => chunk.score > 0)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit)
+    .map((chunk) => ({
+      id: chunk.id,
+      docId: chunk.docId,
+      name: chunk.name,
+      path: chunk.path,
+      index: chunk.index,
+      collection: normalizeCollectionName(chunk.collection || 'default'),
+      score: chunk.score,
+      snippet: chunk.text.slice(0, 600),
+    }));
+}
+
+function buildRagPrompt(query, hits) {
+  const intro = 'Ты отвечаешь строго на основе RAG-контекста. Если данных не хватает, явно скажи об этом.';
+  const contextBlocks = hits.map(
+    (hit, index) =>
+      `[Источник ${index + 1}] ${hit.name} (chunk ${hit.index + 1}, score ${hit.score})\n${hit.snippet}`
+  );
+
+  return [
+    intro,
+    '',
+    'Вопрос пользователя:',
+    query,
+    '',
+    'RAG-контекст:',
+    contextBlocks.join('\n\n---\n\n'),
+    '',
+    'Сформируй структурированный ответ: краткий вывод, подтверждения из источников, пробелы.',
+  ].join('\n');
+}
+
+async function askWithRag(payload = {}) {
+  const query = String(payload.query || '').trim();
+  if (!query) {
+    throw new Error('Пустой RAG-запрос.');
+  }
+
+  const collection = normalizeCollectionName(payload.collection || 'all');
+
+  const hits = searchRag(query, {
+    topK: payload.topK || 5,
+    collection,
+  });
+  if (!hits.length) {
+    return {
+      success: true,
+      answer: 'Не найдено релевантных фрагментов в RAG-индексе. Добавьте файлы, выберите корректную коллекцию и переиндексируйте.',
+      hits: [],
+      reasoning: [],
+      meta: null,
+      collection,
+    };
+  }
+
+  const ragMessage = buildRagPrompt(query, hits);
+  const result = await runOpenClawAgentTurn({
+    text: ragMessage,
+    sessionId: payload.sessionId || 'rag-studio-session',
+    agentId: payload.agentId || '',
+    thinking: payload.thinking || 'medium',
+    timeoutSeconds: payload.timeoutSeconds || 180,
+    requestId: payload.requestId,
+  });
+
+  return {
+    success: true,
+    answer: result.output,
+    hits,
+    reasoning: result.reasoning,
+    meta: result.meta,
+    collection,
+    raw: result.raw,
+  };
+}
+
+async function exportRagIndex(options = {}) {
+  const store = ensureRagStoreLoaded();
+  const defaultName = `bratan-rag-export-${new Date().toISOString().slice(0, 10)}.json`;
+
+  let destinationPath = typeof options.filePath === 'string' ? options.filePath.trim() : '';
+  if (!destinationPath) {
+    if (!dialog || typeof dialog.showSaveDialog !== 'function') {
+      throw new Error('Save dialog API is unavailable.');
+    }
+
+    const saveResult = await dialog.showSaveDialog(mainWindow || undefined, {
+      title: 'Экспорт RAG индекса',
+      defaultPath: path.join(os.homedir(), defaultName),
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      return { canceled: true };
+    }
+
+    destinationPath = saveResult.filePath;
+  }
+
+  const payload = JSON.stringify(store, null, 2);
+  fs.writeFileSync(destinationPath, payload, 'utf8');
+
+  return {
+    success: true,
+    filePath: destinationPath,
+    bytes: Buffer.byteLength(payload, 'utf8'),
+    status: getRagStatus(),
+  };
+}
+
+function mergeRagStores(baseStore, incomingStore) {
+  const base = normalizeRagStorePayload(baseStore);
+  const incoming = normalizeRagStorePayload(incomingStore);
+
+  const docMap = new Map(base.documents.map((doc) => [doc.id, doc]));
+  incoming.documents.forEach((doc) => {
+    docMap.set(doc.id, doc);
+  });
+
+  const chunkMap = new Map(base.chunks.map((chunk) => [chunk.id, chunk]));
+  incoming.chunks.forEach((chunk) => {
+    chunkMap.set(chunk.id, chunk);
+  });
+
+  return {
+    version: Math.max(base.version || RAG_STORE_VERSION, incoming.version || RAG_STORE_VERSION),
+    updatedAt: new Date().toISOString(),
+    documents: Array.from(docMap.values()),
+    chunks: Array.from(chunkMap.values()),
+  };
+}
+
+async function importRagIndex(options = {}) {
+  let sourcePath = typeof options.filePath === 'string' ? options.filePath.trim() : '';
+  if (!sourcePath) {
+    if (!dialog || typeof dialog.showOpenDialog !== 'function') {
+      throw new Error('Open dialog API is unavailable.');
+    }
+
+    const openResult = await dialog.showOpenDialog(mainWindow || undefined, {
+      title: 'Импорт RAG индекса',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+
+    if (openResult.canceled || !openResult.filePaths || !openResult.filePaths.length) {
+      return { canceled: true };
+    }
+
+    sourcePath = openResult.filePaths[0];
+  }
+
+  const mode = String(options.mode || 'replace').toLowerCase() === 'merge' ? 'merge' : 'replace';
+  const importedRaw = fs.readFileSync(sourcePath, 'utf8');
+  const importedPayload = normalizeRagStorePayload(JSON.parse(importedRaw));
+
+  ragStoreCache = mode === 'merge'
+    ? mergeRagStores(ensureRagStoreLoaded(), importedPayload)
+    : importedPayload;
+
+  saveRagStore();
+
+  return {
+    success: true,
+    mode,
+    filePath: sourcePath,
+    status: getRagStatus(),
+  };
+}
+
+function resolveOpenClawCommand(preferredCommand) {
+  const envCmd =
+    preferredCommand ||
+    openClawRuntimeConfig.cliPath ||
+    process.env.OPENCLAW_PATH ||
+    process.env.OPENCLAW_CLI ||
+    process.env.OPENCLAW ||
+    DEFAULT_OPENCLAW_COMMAND;
+  const candidates = [envCmd].filter(Boolean);
+
+  if (process.platform === 'win32') {
+    if (!candidates.includes('openclaw.exe')) candidates.push('openclaw.exe');
+    if (!candidates.includes('openclaw')) candidates.push('openclaw');
+  } else {
+    if (!candidates.includes('openclaw')) candidates.push('openclaw');
+  }
+
+  const appExePath = app && typeof app.getPath === 'function' ? path.normalize(app.getPath('exe')).toLowerCase() : null;
+  const appRootDir = __dirname ? path.normalize(__dirname).toLowerCase() : null;
+
+  for (const candidate of candidates) {
+    try {
+      if (path.isAbsolute(candidate) && fs.existsSync(candidate)) {
+        const cmp = path.normalize(candidate).toLowerCase();
+        if (appExePath && cmp === appExePath) {
+          // не используем UI-бинарник как CLI
+          continue;
+        }
+        if (appRootDir && cmp.startsWith(appRootDir)) {
+          // не запускаем бинарь из той же папки, где UI
+          continue;
+        }
+        return candidate;
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  const lookup = process.platform === 'win32' ? 'where' : 'which';
+  for (const candidate of candidates) {
+    const trimmedCandidate = String(candidate || '').trim();
+
+    // Allow explicit WSL invocation (with args) as a command string directly.
+    if (/^wsl(\.exe)?\s+/i.test(trimmedCandidate)) {
+      return trimmedCandidate;
+    }
+
+    // If user specified Linux path directly in OpenCLAW_PATH on Windows, wrap through wsl.
+    if (process.platform === 'win32' && path.isAbsolute(trimmedCandidate) && trimmedCandidate.startsWith('/')) {
+      return `wsl ${trimmedCandidate}`;
+    }
+
+    try {
+      const resolved = require('child_process')
+        .execSync(`${lookup} ${trimmedCandidate}`, { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .split(/\r?\n/)
+        .find((p) => p && p.trim());
+
+      if (resolved) {
+        const resolvedNormalized = path.normalize(resolved.trim()).toLowerCase();
+        if (appExePath && resolvedNormalized === appExePath) {
+          continue;
+        }
+        if (appRootDir && resolvedNormalized.startsWith(appRootDir)) {
+          continue;
+        }
+        return resolved.trim();
+      }
+    } catch (err) {
+      logger.warn(`OpenClaw path lookup failed (${lookup} ${trimmedCandidate}): ${err.message}`);
+      continue;
+    }
+  }
+
+  // Не найден; возвращаем ошибку с подсказкой.
+  throw new Error(
+    `OpenClaw не найден. Установите openclaw и добавьте в PATH или установите OPENCLAW_PATH. Попытки: ${candidates.join(', ')}`
+  );
+}
+
+function prepareOpenClawExecution(baseCmd, subArgs = []) {
+  const trimmed = (baseCmd || '').trim();
+  if (!trimmed) {
+    throw new Error('OpenClaw command пустой');
+  }
+
+  const parts = trimmed.match(/(?:[^\s"]+|"[^"]*")+/g).map((p) => p.replace(/^"|"$/g, ''));
+  if (!parts.length) {
+    throw new Error('OpenClaw команда не может быть разобрана');
+  }
+
+  // WSL-style invocation: OPENCLAW_PATH='wsl openclaw'
+  if (process.platform === 'win32' && /^(wsl|wsl\.exe)$/i.test(path.basename(parts[0]))) {
+    const wslParts = parts.slice(1);
+    const command = parts[0];
+    const args = [...wslParts, ...subArgs];
+    return { command, args };
+  }
+
+  // If on Windows and the user points to a Linux absolute path (WSL path), route through wsl
+  if (process.platform === 'win32' && path.isAbsolute(parts[0]) && parts[0].startsWith('/')) {
+    const command = 'wsl';
+    const args = [parts[0], ...parts.slice(1), ...subArgs];
+    return { command, args };
+  }
+
+  return { command: parts[0], args: [...parts.slice(1), ...subArgs] };
+}
+
+function getPreparedOpenClawCommand(cliPath) {
+  return prepareOpenClawExecution(resolveOpenClawCommand(cliPath));
+}
+
+function getWslInvocationPrefix(cliPath) {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  let prepared;
+  try {
+    prepared = getPreparedOpenClawCommand(cliPath);
+  } catch {
+    return null;
+  }
+
+  if (!/^(wsl|wsl\.exe)$/i.test(path.basename(prepared.command))) {
+    return null;
+  }
+
+  const firstLinuxArgIndex = prepared.args.findIndex((arg) => typeof arg === 'string' && arg.startsWith('/'));
+  const prefixArgs = firstLinuxArgIndex >= 0 ? prepared.args.slice(0, firstLinuxArgIndex) : prepared.args.slice();
+  return { command: prepared.command, args: prefixArgs };
+}
+
+function runWslShellCommand(shellCommand, cliPath) {
+  const invocation = getWslInvocationPrefix(cliPath);
+  if (!invocation) {
+    return null;
+  }
+
+  try {
+    return execFileSync(invocation.command, [...invocation.args, 'sh', '-lc', shellCommand], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+  } catch (err) {
+    logger.warn(`WSL shell command failed: ${err.message}`);
+    return null;
+  }
+}
+
+function normalizePathForComparison(targetPath) {
+  return path.normalize(targetPath).replace(/\\+$/, '').toLowerCase();
+}
+
+function getWorkspaceRootPath() {
+  const defaultWorkspace = path.join(os.homedir(), '.openclaw', 'workspace');
+  if (process.platform !== 'win32') {
+    return defaultWorkspace;
+  }
+
+  const wslWorkspace = runWslShellCommand('wslpath -w "$HOME/.openclaw/workspace"');
+  return wslWorkspace || defaultWorkspace;
+}
+
+function ensurePathInWorkspace(filePath) {
+  const workspace = getWorkspaceRootPath();
+  const resolved = path.resolve(filePath);
+  const normalizedWorkspace = normalizePathForComparison(workspace);
+  const normalizedResolved = normalizePathForComparison(resolved);
+
+  if (normalizedResolved !== normalizedWorkspace && !normalizedResolved.startsWith(`${normalizedWorkspace}${path.sep.toLowerCase()}`)) {
+    throw new Error('Доступ за пределами рабочего пространства запрещён.');
+  }
+
+  return { workspace, resolved };
+}
+
+function spawnOpenClaw(subArgs, options = {}) {
+  const cmd = resolveOpenClawCommand(options.cliPath);
+  const { command, args } = prepareOpenClawExecution(cmd, subArgs);
+  return spawn(command, args, { shell: false, ...options.spawnOptions });
+}
+
+function runOpenClawCommand(subArgs, options = {}) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawnOpenClaw(['--no-color', ...subArgs], options);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+    let timeoutId = null;
+    let timedOut = false;
+
+    if (options.timeoutMs && options.timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+      }, options.timeoutMs);
+    }
+
+    child.stdout.on('data', (data) => {
+      const chunk = data.toString();
+      stdout += chunk;
+      if (typeof options.onStdoutData === 'function') {
+        try {
+          options.onStdoutData(chunk);
+        } catch {
+          // ignore stream callback errors
+        }
+      }
+    });
+    child.stderr.on('data', (data) => {
+      const chunk = data.toString();
+      stderr += chunk;
+      if (typeof options.onStderrData === 'function') {
+        try {
+          options.onStderrData(chunk);
+        } catch {
+          // ignore stream callback errors
+        }
+      }
+    });
+
+    child.on('error', (err) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(err);
+    });
+
+    child.on('close', (code, signal) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      const cleanStdout = stripKnownCliNoise(stdout);
+      const cleanStderr = stripKnownCliNoise(stderr);
+      resolve({
+        code,
+        signal,
+        timedOut,
+        stdout: cleanStdout,
+        stderr: cleanStderr,
+        output: [cleanStdout, cleanStderr].filter(Boolean).join('\n').trim(),
+      });
+    });
+  });
+}
+
+async function ensureGatewayRunning() {
+  const status = await getGatewayStatus();
+  if (status.running) {
+    return status;
+  }
+
+  await startOpenClawGateway();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await delay(1000);
+    const currentStatus = await getGatewayStatus();
+    if (currentStatus.running) {
+      return currentStatus;
+    }
+  }
+
+  throw new Error('Gateway не запустился. Проверьте `openclaw gateway status` в WSL.');
+}
+
+function getGatewayStatus() {
+  return runOpenClawCommand(['gateway', 'status'], { timeoutMs: 20000 })
+    .then(({ code, stdout, stderr, output }) => {
+      const normalizedOutput = stripKnownCliNoise(`${stdout}\n${stderr}`) || output;
+      const lower = normalizedOutput.toLowerCase();
+      const running =
+        code === 0 &&
+        ((lower.includes('runtime: running') || lower.includes('rpc probe: ok')) ||
+          (lower.includes('running') && lower.includes('active')));
+      return { code, running, output: normalizedOutput.trim() };
+    })
+    .catch(() => ({ code: 1, running: false, output: '' }));
+}
+
+async function startOpenClawGateway() {
   if (openclawProcess) {
     showNotification('OpenClaw Gateway уже запущен.');
-    return;
+    return { success: true, reason: 'already-running' };
+  }
+
+  let status;
+  try {
+    status = await getGatewayStatus();
+  } catch (err) {
+    showError('Ошибка Gateway', err.message);
+    return { success: false, error: err.message };
+  }
+
+  if (status.running) {
+    showNotification('OpenClaw Gateway уже запущен.');
+    return { success: true, reason: 'already-running' };
   }
 
   showNotification('Запуск OpenClaw Gateway...');
 
-  openclawProcess = spawn('openclaw', ['gateway', 'start'], {
-    stdio: 'pipe',
-    shell: false,
-  });
+  try {
+    resolveOpenClawCommand();
+  } catch (err) {
+    showError('OpenClaw не найден', err.message);
+    return { success: false, error: err.message };
+  }
+
+  openclawProcess = spawnOpenClaw(['gateway', 'start'], { spawnOptions: { stdio: 'pipe' } });
 
   openclawProcess.stdout.on('data', (data) => {
     const message = data.toString().trim();
-    if (mainWindow) {
-      mainWindow.webContents.send('openclaw-log', { type: 'stdout', message });
-    }
+    if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'stdout', message });
     logger.info('OpenClaw stdout: ' + message);
   });
 
   openclawProcess.stderr.on('data', (data) => {
     const message = data.toString().trim();
-    if (mainWindow) {
-      mainWindow.webContents.send('openclaw-log', { type: 'stderr', message });
-    }
+    if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'stderr', message });
     logger.error('OpenClaw stderr: ' + message);
   });
 
   openclawProcess.on('close', (code) => {
     showNotification(`OpenClaw Gateway завершён с кодом ${code}`);
-    if (mainWindow) {
-      mainWindow.webContents.send('openclaw-log', { type: 'close', code });
-    }
+    if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'close', code });
     openclawProcess = null;
+
+    const pidFile = path.join(__dirname, 'gateway.pid');
+    if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile);
   });
 
   openclawProcess.on('error', (err) => {
     showNotification(`Ошибка запуска OpenClaw: ${err.message}`);
-    if (mainWindow) {
-      mainWindow.webContents.send('openclaw-log', { type: 'error', message: err.message });
-    }
+    if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'error', message: err.message });
+    logger.error('OpenClaw spawn error: ' + err.stack);
     openclawProcess = null;
   });
 
@@ -358,33 +1675,133 @@ function startOpenClawGateway() {
   if (openclawProcess.pid) {
     fs.writeFileSync(path.join(__dirname, 'gateway.pid'), openclawProcess.pid.toString());
   }
+
+  return { success: true, pid: openclawProcess ? openclawProcess.pid : null };
 }
 
-function stopOpenClawGateway() {
-  if (!openclawProcess) {
+async function stopOpenClawGateway() {
+  let status;
+  try {
+    status = await getGatewayStatus();
+  } catch (err) {
+    showError('Ошибка Gateway', err.message);
+    return { success: false, error: err.message };
+  }
+
+  if (!status.running && !openclawProcess) {
     showNotification('OpenClaw Gateway не запущен.');
-    return;
+    return { success: false, reason: 'not-running' };
   }
 
   showNotification('Остановка OpenClaw Gateway...');
-  openclawProcess.kill('SIGTERM');
-  openclawProcess = null;
+
+  // If we started process internally, prefer graceful kill
+  if (openclawProcess && openclawProcess.pid) {
+    try {
+      openclawProcess.kill('SIGTERM');
+      openclawProcess = null;
+    } catch (err) {
+      logger.warn('Failed to kill local process: ' + err.message);
+    }
+  }
+
+  try {
+    resolveOpenClawCommand();
+  } catch (err) {
+    showError('OpenClaw не найден', err.message);
+    return { success: false, error: err.message };
+  }
+
+  const stop = spawnOpenClaw(['gateway', 'stop']);
+
+  stop.on('close', (code) => {
+    showNotification(`OpenClaw Gateway stop completed (code ${code})`);
+    if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'info', message: 'gateway stop code ' + code });
+  });
 
   // Remove PID file
   const pidFile = path.join(__dirname, 'gateway.pid');
   if (fs.existsSync(pidFile)) {
     fs.unlinkSync(pidFile);
   }
+
+  return { success: true };
 }
 
-function checkGatewayStatus() {
-  const check = spawn('openclaw', ['gateway', 'status'], { shell: false });
-  let output = '';
-  check.stdout.on('data', (data) => (output += data.toString()));
-  check.stderr.on('data', (data) => (output += data.toString()));
-  check.on('close', () => {
-    showNotification(`Статус OpenClaw Gateway:\n${output}`);
+async function checkGatewayStatus(options = {}) {
+  let status;
+  try {
+    status = await getGatewayStatus();
+  } catch (err) {
+    showError('OpenClaw не найден', err.message);
+    return { success: false, error: err.message };
+  }
+
+  const statusText = status.running ? 'Gateway запущен' : 'Gateway не запущен';
+  if (!options.silent) {
+    showNotification(`Статус OpenClaw Gateway: ${statusText}`);
+  }
+  if (mainWindow) mainWindow.webContents.send('openclaw-log', { type: 'status', message: statusText });
+  return status;
+}
+
+function normalizeOpenClawSessions(payload) {
+  if (!payload) return [];
+
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload.sessions)) {
+    return payload.sessions;
+  }
+
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+
+  return [];
+}
+
+async function listOpenClawSessions() {
+  try {
+    const result = await runOpenClawCommand(['sessions', 'list', '--json'], { timeoutMs: 30000 });
+    if (result.code !== 0) {
+      return [];
+    }
+
+    const parsed = parseJsonFromText(result.stdout || result.output);
+    const sessions = normalizeOpenClawSessions(parsed);
+    return sessions.map((session, index) => {
+      const sessionId = session.sessionId || session.id || session.key || `session-${index + 1}`;
+      const agentId = session.agentId || session.agent || session.agentName || '';
+      const updatedAt = session.updatedAt || session.lastMessageAt || session.modifiedAt || null;
+      return {
+        sessionId,
+        agentId,
+        updatedAt,
+        raw: session,
+      };
+    });
+  } catch (err) {
+    logger.warn(`Unable to list OpenClaw sessions: ${err.message}`);
+    return [];
+  }
+}
+
+async function listOpenClawAgents() {
+  const sessions = await listOpenClawSessions();
+  const agents = new Set(['main-agent']);
+
+  sessions.forEach((session) => {
+    if (session.agentId) {
+      agents.add(session.agentId);
+    }
   });
+
+  return Array.from(agents)
+    .map((agentId) => ({ agentId }))
+    .sort((left, right) => left.agentId.localeCompare(right.agentId));
 }
 
 function showNotification(message) {
@@ -394,138 +1811,177 @@ function showNotification(message) {
   }).show();
 }
 
-ipcMain.handle('show-notification', (event, { title, body }) => {
-  new Notification({
-    title: title || 'Братан Desktop',
-    body: body || '',
-  }).show();
-});
+if (ipcMain && typeof ipcMain.handle === 'function') {
+  const safeHandle = (channel, handler) => {
+    if (ipcMain.removeHandler && typeof ipcMain.removeHandler === 'function') {
+      ipcMain.removeHandler(channel);
+    }
+    ipcMain.handle(channel, handler);
+  };
 
-// IPC handlers
-ipcMain.handle('openclaw-start', () => startOpenClawGateway());
-ipcMain.handle('openclaw-stop', () => stopOpenClawGateway());
-ipcMain.handle('openclaw-status', () => checkGatewayStatus());
-ipcMain.handle('openclaw-send-message', async (event, message) => {
-  return new Promise((resolve, reject) => {
-    const send = spawn(
-      'openclaw',
-      ['sessions', 'send', '--session', 'telegram:446533349', message],
-      { shell: false }
-    );
-    let stdout = '';
-    let stderr = '';
+  safeHandle('show-notification', (event, { title, body }) => {
+    new Notification({
+      title: title || 'Братан Desktop',
+      body: body || '',
+    }).show();
+  });
 
-    send.stdout.on('data', (data) => (stdout += data.toString()));
-    send.stderr.on('data', (data) => (stderr += data.toString()));
+  // IPC handlers
+  safeHandle('openclaw-start', () => startOpenClawGateway());
+  safeHandle('openclaw-stop', () => stopOpenClawGateway());
+  safeHandle('openclaw-status', (event, options) => checkGatewayStatus(options || {}));
+  safeHandle('openclaw-configure', (event, config) => updateOpenClawRuntimeConfig(config));
 
-    send.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`OpenClaw send failed (${code}): ${stderr || stdout}`));
-      }
+  safeHandle('openclaw-send-message', async (event, payload) => runOpenClawAgentTurn(payload));
 
-      if (stderr && !stderr.toLowerCase().includes('warning')) {
-        return reject(new Error(stderr));
-      }
-
-      resolve({ success: true, output: stdout });
-    });
-
-    send.on('error', (err) => {
-      reject(new Error(`Ошибка отправки сообщения: ${err.message}`));
+  safeHandle('openclaw-pick-files', async (event, options) => {
+    return pickFilesFromDialog({
+      title: 'Выберите файлы для отправки в чат',
+      multi: true,
+      ...(options || {}),
     });
   });
-});
 
-ipcMain.handle('openclaw-get-messages', async () => {
-  return new Promise((resolve, reject) => {
-    const history = spawn(
-      'openclaw',
-      ['sessions', 'history', '--session', 'telegram:446533349', '--limit', '20', '--json'],
-      { shell: false }
-    );
-    let stdout = '';
-    let stderr = '';
+  safeHandle('openclaw-list-sessions', async () => {
+    const sessions = await listOpenClawSessions();
+    return { sessions };
+  });
 
-    history.stdout.on('data', (data) => (stdout += data.toString()));
-    history.stderr.on('data', (data) => (stderr += data.toString()));
+  safeHandle('openclaw-list-agents', async () => {
+    const agents = await listOpenClawAgents();
+    return { agents };
+  });
 
-    history.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`OpenClaw history failed (${code}): ${stderr || stdout}`));
-      }
+  safeHandle('openclaw-get-messages', async () => {
+    return { messages: [] };
+  });
 
-      if (stderr && !stderr.toLowerCase().includes('warning')) {
-        logger.warn('OpenClaw history stderr: ' + stderr);
-      }
+  safeHandle('rag-pick-files', async (event, options) => {
+    return pickFilesFromDialog({
+      title: 'Выберите файлы для RAG индекса',
+      multi: true,
+      ...(options || {}),
+    });
+  });
 
-      let messages = [];
-      try {
-        const parsed = JSON.parse(stdout);
-        if (Array.isArray(parsed)) {
-          messages = parsed.map((msg) => ({
-            id: msg.id || msg.timestamp,
-            sender: msg.sender || 'Unknown',
-            text: msg.text || msg.content || '',
-            timestamp: msg.timestamp || Date.now(),
-            isUser: msg.sender === 'user' || msg.sender === 'D U' || msg.sender === '446533349',
-          }));
+  safeHandle('rag-index-files', async (event, payload) => {
+    const request = payload || {};
+    return indexFilesToRag(request.files || [], {
+      collection: request.collection,
+    });
+  });
+
+  safeHandle('rag-status', async () => {
+    return getRagStatus();
+  });
+
+  safeHandle('rag-search', async (event, payload) => {
+    const request = payload || {};
+    const query = String(request.query || '').trim();
+    const topK = request.topK || 5;
+    const collection = request.collection || 'all';
+    return {
+      query,
+      collection,
+      hits: searchRag(query, { topK, collection }),
+    };
+  });
+
+  safeHandle('rag-ask', async (event, payload) => {
+    return askWithRag(payload || {});
+  });
+
+  safeHandle('rag-clear', async () => {
+    ragStoreCache = createEmptyRagStore();
+    saveRagStore();
+    return getRagStatus();
+  });
+
+  safeHandle('rag-export', async (event, payload) => {
+    return exportRagIndex(payload || {});
+  });
+
+  safeHandle('rag-import', async (event, payload) => {
+    return importRagIndex(payload || {});
+  });
+
+  safeHandle('get-workspace-path', () => {
+    return getWorkspaceRootPath();
+  });
+
+  safeHandle('fs-list-dir', async (event, folderPath) => {
+    const fsPromises = require('fs').promises;
+    const targetPath = folderPath || getWorkspaceRootPath();
+    const { resolved } = ensurePathInWorkspace(targetPath);
+    const entries = await fsPromises.readdir(resolved, { withFileTypes: true });
+
+    const detailedEntries = await Promise.all(
+      entries.map(async (entry) => {
+        const entryPath = path.join(resolved, entry.name);
+        let size = 0;
+        try {
+          if (!entry.isDirectory()) {
+            const stats = await fsPromises.stat(entryPath);
+            size = stats.size;
+          }
+        } catch {
+          // ignore stat failures for now
         }
-      } catch (parseErr) {
-        logger.warn('Failed to parse messages JSON: ' + parseErr.message);
+
+        return {
+          name: entry.name,
+          path: entryPath,
+          isDirectory: entry.isDirectory(),
+          size,
+        };
+      })
+    );
+
+    detailedEntries.sort((left, right) => {
+      if (left.isDirectory !== right.isDirectory) {
+        return left.isDirectory ? -1 : 1;
       }
-
-      resolve({ messages });
+      return left.name.localeCompare(right.name);
     });
 
-    history.on('error', (err) => {
-      reject(new Error(`Ошибка получения сообщений: ${err.message}`));
-    });
+    return detailedEntries;
   });
-});
-ipcMain.handle('get-workspace-path', () => {
-  return path.join(os.homedir(), '.openclaw', 'workspace');
-});
 
-ipcMain.handle('open-folder', (event, folderPath) => {
-  const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
-  const resolved = path.resolve(folderPath);
-  if (!resolved.startsWith(workspace)) {
-    throw new Error('Открытие папки за пределами рабочего пространства запрещено.');
-  }
-  shell.openPath(resolved);
-});
+  safeHandle('open-folder', (event, folderPath) => {
+    const { resolved } = ensurePathInWorkspace(folderPath);
+    shell.openPath(resolved);
+  });
 
-ipcMain.handle('fs-read-file', async (event, filePath) => {
-  try {
-    const fs = require('fs').promises;
-    const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
-    const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(workspace)) {
-      throw new Error('Чтение файлов за пределами рабочего пространства запрещено.');
+  safeHandle('fs-read-file', async (event, filePath) => {
+    try {
+      const fs = require('fs').promises;
+      const { resolved } = ensurePathInWorkspace(filePath);
+
+      const content = await fs.readFile(resolved, 'utf8');
+      return content;
+    } catch (err) {
+      throw new Error(`Ошибка чтения файла: ${err.message}`);
     }
+  });
 
-    const content = await fs.readFile(resolved, 'utf8');
-    return content;
-  } catch (err) {
-    throw new Error(`Ошибка чтения файла: ${err.message}`);
-  }
-});
+  safeHandle('fs-write-file', async (event, filePath, content) => {
+    try {
+      const fs = require('fs').promises;
+      const { resolved } = ensurePathInWorkspace(filePath);
 
-ipcMain.handle('fs-write-file', async (event, filePath, content) => {
-  try {
-    const fs = require('fs').promises;
-    const workspace = path.join(os.homedir(), '.openclaw', 'workspace');
-    const resolved = path.resolve(filePath);
-    if (!resolved.startsWith(workspace)) {
-      throw new Error('Запись файлов за пределами рабочего пространства запрещено.');
+      await fs.writeFile(resolved, content, 'utf8');
+      return { success: true };
+    } catch (err) {
+      throw new Error(`Ошибка записи файла: ${err.message}`);
     }
+  });
+} else {
+  logger.warn('ipcMain is unavailable; skipping IPC handler registration.');
+}
 
-    await fs.writeFile(resolved, content, 'utf8');
-    return { success: true };
-  } catch (err) {
-    throw new Error(`Ошибка записи файла: ${err.message}`);
-  }
-});
+
+
+
 
 // Task manager IPC
 ipcMain.handle('analyze-pdf', (event, pdfPath, options) => {
@@ -619,6 +2075,7 @@ if (!process.env.JEST_WORKER_ID && app && typeof app.whenReady === 'function') {
     // Initialize managers
     const { HeavyTaskManager } = require('./taskManager');
     taskManager = new HeavyTaskManager();
+    ensureRagStoreLoaded();
 
     googleIntegration = new GoogleIntegration();
     githubIntegration = new GitHubIntegration();
