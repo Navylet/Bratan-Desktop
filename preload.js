@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
     stop: () => ipcRenderer.invoke('openclaw-stop'),
     status: (options) => ipcRenderer.invoke('openclaw-status', options),
     configure: (config) => ipcRenderer.invoke('openclaw-configure', config),
+    versionInfo: () => ipcRenderer.invoke('openclaw-version-info'),
+    update: (options) => ipcRenderer.invoke('openclaw-update', options),
     sendMessage: (message) => ipcRenderer.invoke('openclaw-send-message', message),
     getMessages: () => ipcRenderer.invoke('openclaw-get-messages'),
     pickFiles: (options) => ipcRenderer.invoke('openclaw-pick-files', options),

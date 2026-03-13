@@ -42,6 +42,174 @@ function initRenderer() {
   const gatewayStatus = document.getElementById('gateway-status');
   const btnStart = document.getElementById('btn-start-gateway');
   const btnStop = document.getElementById('btn-stop-gateway');
+  const openClawVersionInstalled = document.getElementById('openclaw-version-installed');
+  const openClawVersionLatest = document.getElementById('openclaw-version-latest');
+  const openClawVersionChannel = document.getElementById('openclaw-version-channel');
+  const openClawUpdateState = document.getElementById('openclaw-update-state');
+  const openClawUpdateChannelSelect = document.getElementById('openclaw-update-channel');
+  const btnOpenClawUpdate = document.getElementById('btn-openclaw-update');
+
+  function isKnownOpenClawChannel(value) {
+    return ['stable', 'beta', 'dev'].includes(String(value || '').toLowerCase());
+  }
+
+  function getSelectedOpenClawChannel() {
+    if (!openClawUpdateChannelSelect) {
+      return 'stable';
+    }
+
+    const selected = String(openClawUpdateChannelSelect.value || '').toLowerCase();
+    return isKnownOpenClawChannel(selected) ? selected : 'stable';
+  }
+
+  function setSelectedOpenClawChannel(channel, persist = true) {
+    const normalized = isKnownOpenClawChannel(channel) ? String(channel).toLowerCase() : 'stable';
+    if (openClawUpdateChannelSelect) {
+      openClawUpdateChannelSelect.value = normalized;
+    }
+
+    if (persist) {
+      localStorage.setItem('openclaw_update_channel', normalized);
+    }
+
+    return normalized;
+  }
+
+  const initialSavedOpenClawChannel = String(localStorage.getItem('openclaw_update_channel') || '').toLowerCase();
+  setSelectedOpenClawChannel(initialSavedOpenClawChannel, false);
+
+  let openClawVersionState = {
+    installedVersion: null,
+    latestVersion: null,
+    updateAvailable: false,
+    inProgress: false,
+    channel: null,
+  };
+  let openClawVersionLoading = false;
+
+  function setOpenClawVersionUi(state = {}) {
+    const installed = state.installedVersion || '—';
+    const latest = state.latestVersion || '—';
+    const channel = state.channel ? `(${state.channel})` : '';
+
+    if (openClawVersionInstalled) {
+      openClawVersionInstalled.textContent = `installed: ${installed}`;
+    }
+    if (openClawVersionLatest) {
+      openClawVersionLatest.textContent = `latest: ${latest}`;
+    }
+    if (openClawVersionChannel) {
+      openClawVersionChannel.textContent = channel;
+    }
+
+    if (openClawUpdateState) {
+      if (state.loading) {
+        openClawUpdateState.textContent = 'Проверка версий...';
+      } else if (state.inProgress) {
+        openClawUpdateState.textContent = 'Обновление OpenClaw...';
+      } else if (state.updateAvailable) {
+        openClawUpdateState.textContent = 'Доступно обновление';
+      } else if (state.installedVersion && state.latestVersion) {
+        openClawUpdateState.textContent = 'Версия актуальна';
+      } else {
+        openClawUpdateState.textContent = 'Статус версии недоступен';
+      }
+    }
+
+    if (btnOpenClawUpdate) {
+      const disabled = Boolean(state.loading || state.inProgress);
+      btnOpenClawUpdate.disabled = disabled;
+      btnOpenClawUpdate.classList.toggle('opacity-60', disabled);
+      btnOpenClawUpdate.classList.toggle('cursor-not-allowed', disabled);
+      const actionLabel = state.inProgress ? 'Обновляется...' : state.updateAvailable ? 'Обновить' : 'Проверить';
+      btnOpenClawUpdate.innerHTML = `<i class="fas fa-download mr-1"></i> ${actionLabel}`;
+    }
+
+    if (openClawUpdateChannelSelect) {
+      const disabled = Boolean(state.loading || state.inProgress);
+      openClawUpdateChannelSelect.disabled = disabled;
+      openClawUpdateChannelSelect.classList.toggle('opacity-60', disabled);
+      openClawUpdateChannelSelect.classList.toggle('cursor-not-allowed', disabled);
+    }
+  }
+
+  async function refreshOpenClawVersionInfo(options = {}) {
+    if (openClawVersionLoading) {
+      return;
+    }
+
+    openClawVersionLoading = true;
+    setOpenClawVersionUi({ ...openClawVersionState, loading: true });
+    try {
+      const info = await window.api.openclaw.versionInfo();
+      if (!isKnownOpenClawChannel(localStorage.getItem('openclaw_update_channel')) && isKnownOpenClawChannel(info?.channel)) {
+        setSelectedOpenClawChannel(info.channel, true);
+      }
+
+      const selectedChannel = getSelectedOpenClawChannel();
+      openClawVersionState = {
+        installedVersion: info?.installedVersion || null,
+        latestVersion: info?.latestVersion || null,
+        updateAvailable: Boolean(info?.updateAvailable),
+        inProgress: Boolean(info?.inProgress),
+        channel: info?.channel || null,
+      };
+
+      // Dry-run preview allows checking another update channel without applying changes.
+      if (selectedChannel && selectedChannel !== openClawVersionState.channel) {
+        try {
+          const preview = await window.api.openclaw.update({
+            dryRun: true,
+            restart: false,
+            channel: selectedChannel,
+            timeoutSeconds: 120,
+          });
+
+          const previewCurrent = preview?.currentVersion || openClawVersionState.installedVersion;
+          const previewTarget = preview?.targetVersion || openClawVersionState.latestVersion;
+          openClawVersionState = {
+            ...openClawVersionState,
+            installedVersion: previewCurrent,
+            latestVersion: previewTarget,
+            updateAvailable: Boolean(previewCurrent && previewTarget && previewCurrent !== previewTarget),
+            channel: preview?.effectiveChannel || selectedChannel,
+          };
+        } catch (previewErr) {
+          console.warn('OpenClaw channel preview failed:', previewErr);
+        }
+      }
+
+      setOpenClawVersionUi(openClawVersionState);
+
+      if (options.notify) {
+        const effectiveChannel = openClawVersionState.channel || selectedChannel;
+        if (openClawVersionState.updateAvailable) {
+          showNotification(
+            `Доступно обновление OpenClaw (${effectiveChannel}): ${openClawVersionState.installedVersion || 'unknown'} -> ${openClawVersionState.latestVersion || 'latest'}`,
+            'info'
+          );
+        } else {
+          showNotification(`OpenClaw актуален (${effectiveChannel}): ${openClawVersionState.installedVersion || 'unknown'}`, 'success');
+        }
+      }
+    } catch (err) {
+      setOpenClawVersionUi({ ...openClawVersionState, loading: false });
+      if (options.notify) {
+        showNotification('Ошибка проверки версии OpenClaw: ' + err.message, 'error');
+      }
+    } finally {
+      openClawVersionLoading = false;
+    }
+  }
+
+  if (openClawUpdateChannelSelect) {
+    openClawUpdateChannelSelect.addEventListener('change', () => {
+      const selectedChannel = setSelectedOpenClawChannel(getSelectedOpenClawChannel(), true);
+      openClawVersionState = { ...openClawVersionState, channel: selectedChannel };
+      setOpenClawVersionUi(openClawVersionState);
+      void refreshOpenClawVersionInfo({ notify: true });
+    });
+  }
 
   function updateGatewayStatus(isRunning) {
     const dot = gatewayStatus.querySelector('.w-3');
@@ -824,6 +992,46 @@ function initRenderer() {
     }
   }
 
+  if (btnOpenClawUpdate) {
+    btnOpenClawUpdate.addEventListener('click', async () => {
+      if (openClawVersionLoading || openClawVersionState.inProgress) {
+        return;
+      }
+
+      if (!openClawVersionState.updateAvailable) {
+        void refreshOpenClawVersionInfo({ notify: true });
+        return;
+      }
+
+      const selectedChannel = getSelectedOpenClawChannel();
+      const fromVersion = openClawVersionState.installedVersion || 'unknown';
+      const toVersion = openClawVersionState.latestVersion || 'latest';
+      const shouldUpdate = window.confirm(
+        `Обновить OpenClaw сейчас?\n\nКанал: ${selectedChannel}\n${fromVersion} -> ${toVersion}`
+      );
+      if (!shouldUpdate) {
+        return;
+      }
+
+      openClawVersionState = { ...openClawVersionState, inProgress: true };
+      setOpenClawVersionUi(openClawVersionState);
+
+      try {
+        showNotification('Запускаю обновление OpenClaw...', 'info');
+        const result = await window.api.openclaw.update({ restart: true, channel: selectedChannel });
+        const nextVersion = result?.targetVersion || toVersion;
+        showNotification(`Обновление OpenClaw завершено: ${fromVersion} -> ${nextVersion}`, 'success');
+      } catch (err) {
+        showNotification('Ошибка обновления OpenClaw: ' + err.message, 'error');
+      } finally {
+        openClawVersionState = { ...openClawVersionState, inProgress: false };
+        setOpenClawVersionUi(openClawVersionState);
+        void refreshOpenClawVersionInfo();
+        void refreshTransportStatus();
+      }
+    });
+  }
+
   btnSend.addEventListener('click', async () => {
     const text = chatInput.value.trim();
     if (!text && selectedChatAttachments.length === 0) return;
@@ -1189,8 +1397,14 @@ function initRenderer() {
         collection,
       });
       renderRagStatus(result?.status || {});
-      const errorCount = Array.isArray(result?.errors) ? result.errors.length : 0;
-      showNotification(`RAG индекс обновлён (${collection}): indexed=${result?.indexed || 0}, errors=${errorCount}`, 'success');
+      const errors = Array.isArray(result?.errors) ? result.errors : [];
+      const errorCount = errors.length;
+      const notificationLevel = errorCount > 0 ? 'warning' : 'success';
+      showNotification(`RAG индекс обновлён (${collection}): indexed=${result?.indexed || 0}, errors=${errorCount}`, notificationLevel);
+
+      if (errorCount > 0 && ragAnswer) {
+        ragAnswer.textContent = `Часть файлов не проиндексирована:\n${errors.slice(0, 6).join('\n')}`;
+      }
     } catch (err) {
       showNotification('Ошибка индексации RAG: ' + err.message, 'error');
     } finally {
@@ -1370,7 +1584,8 @@ function initRenderer() {
 
     void syncOpenClawConfig().then(() => {
       void initWorkspacePath().then(() => refreshFileList());
-      return refreshTransportStatus();
+      void refreshTransportStatus();
+      void refreshOpenClawVersionInfo();
     });
   });
 
@@ -1396,11 +1611,13 @@ function initRenderer() {
     localStorage.removeItem('openclaw_chat_session_id');
     localStorage.removeItem('openclaw_chat_thinking');
     localStorage.removeItem('openclaw_chat_show_reasoning');
+    localStorage.removeItem('openclaw_update_channel');
 
     if (chatAgentIdInput) chatAgentIdInput.value = '';
     if (chatSessionIdInput) chatSessionIdInput.value = 'bratan-desktop-ui';
     if (chatThinkingSelect) chatThinkingSelect.value = 'medium';
     if (chatShowReasoningCheckbox) chatShowReasoningCheckbox.checked = true;
+    setSelectedOpenClawChannel('stable', false);
 
     showNotification('Настройки сброшены', 'info');
 
@@ -1409,7 +1626,8 @@ function initRenderer() {
     initOpenClawWebSocket();
     void syncOpenClawConfig().then(() => {
       void initWorkspacePath().then(() => refreshFileList());
-      return refreshTransportStatus();
+      void refreshTransportStatus();
+      void refreshOpenClawVersionInfo();
     });
   });
 
@@ -1884,6 +2102,7 @@ function initRenderer() {
     initOpenClawWebSocket();
     void initWorkspacePath().then(() => refreshFileList());
     void refreshTransportStatus();
+    void refreshOpenClawVersionInfo();
     void refreshAgentRuntime();
     void refreshRagStatus();
   });

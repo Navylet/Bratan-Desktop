@@ -332,6 +332,7 @@ const RAG_CHUNK_SIZE = 1200;
 const RAG_CHUNK_OVERLAP = 200;
 
 let ragStoreCache = null;
+let openClawUpdateInProgress = false;
 
 function updateOpenClawRuntimeConfig(config = {}) {
   if (!config || typeof config !== 'object') {
@@ -464,6 +465,23 @@ function parseJsonFromText(text) {
     } catch {
       // continue
     }
+  }
+
+  return null;
+}
+
+function parseOpenClawVersionText(text = '') {
+  const source = String(text || '').trim();
+  if (!source) return null;
+
+  const calendarMatch = source.match(/\b(\d{4}\.\d+\.\d+)\b/);
+  if (calendarMatch) {
+    return calendarMatch[1];
+  }
+
+  const semverMatch = source.match(/\b(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)\b/);
+  if (semverMatch) {
+    return semverMatch[1];
   }
 
   return null;
@@ -610,6 +628,57 @@ function isTextFileExtension(filePath) {
 }
 
 let officeParserModule = null;
+let pdfParseFunction = undefined;
+
+function getPdfParseFunction() {
+  if (pdfParseFunction !== undefined) {
+    return pdfParseFunction;
+  }
+
+  try {
+    const imported = require('pdf-parse');
+    const resolved = typeof imported === 'function' ? imported : imported && typeof imported.default === 'function' ? imported.default : null;
+    if (!resolved) {
+      throw new Error('pdf-parse export is not a function');
+    }
+
+    pdfParseFunction = resolved;
+  } catch (err) {
+    logger.warn(`pdf-parse module is unavailable: ${err.message}`);
+    pdfParseFunction = null;
+  }
+
+  return pdfParseFunction;
+}
+
+async function extractPdfDocumentText(filePath) {
+  const parser = getPdfParseFunction();
+  if (!parser) {
+    return {
+      text: '',
+      extraction: 'pdf-parse-unavailable',
+    };
+  }
+
+  try {
+    const buffer = await fs.promises.readFile(filePath);
+    const parsed = await parser(buffer, { max: 0 });
+    const text = String(parsed && parsed.text ? parsed.text : '').trim();
+    if (text) {
+      return {
+        text,
+        extraction: 'pdf-parse',
+      };
+    }
+  } catch (err) {
+    logger.warn(`pdf-parse extraction failed for ${filePath}: ${err.message}`);
+  }
+
+  return {
+    text: '',
+    extraction: 'pdf-parse-empty',
+  };
+}
 
 async function getOfficeParserModule() {
   if (officeParserModule) return officeParserModule;
@@ -628,7 +697,7 @@ async function getOfficeParserModule() {
   return officeParserModule;
 }
 
-async function extractOfficeDocumentText(filePath, ext) {
+async function extractWithOfficeParser(filePath, ext) {
   try {
     const parser = await getOfficeParserModule();
     const ast = await parser.parseOffice(filePath, {
@@ -651,25 +720,46 @@ async function extractOfficeDocumentText(filePath, ext) {
     logger.warn(`Office extraction failed for ${filePath}: ${err.message}`);
   }
 
-  if (ext === '.pdf' && taskManager && typeof taskManager.analyzePDF === 'function') {
-    try {
-      const pdfData = await taskManager.analyzePDF(filePath, { pages: '1-20', ocr: false });
-      const text = String(pdfData.rawText || '').trim();
-      if (text) {
-        return {
-          text,
-          extraction: 'pdf-task-manager',
-        };
-      }
-    } catch (err) {
-      logger.warn(`PDF fallback extraction failed for ${filePath}: ${err.message}`);
-    }
-  }
-
   return {
     text: '',
     extraction: `unsupported:${ext.replace('.', '')}`,
   };
+}
+
+async function extractOfficeDocumentText(filePath, ext) {
+  if (ext === '.pdf') {
+    const pdfParsePayload = await extractPdfDocumentText(filePath);
+    if (pdfParsePayload.text) {
+      return pdfParsePayload;
+    }
+
+    const officePdfPayload = await extractWithOfficeParser(filePath, ext);
+    if (officePdfPayload.text) {
+      return officePdfPayload;
+    }
+
+    if (taskManager && typeof taskManager.analyzePDF === 'function') {
+      try {
+        const pdfData = await taskManager.analyzePDF(filePath, { pages: '1-20', ocr: false });
+        const text = String(pdfData.rawText || '').trim();
+        if (text) {
+          return {
+            text,
+            extraction: 'pdf-task-manager',
+          };
+        }
+      } catch (err) {
+        logger.warn(`PDF fallback extraction failed for ${filePath}: ${err.message}`);
+      }
+    }
+
+    return {
+      text: '',
+      extraction: pdfParsePayload.extraction || officePdfPayload.extraction || 'unsupported:pdf',
+    };
+  }
+
+  return extractWithOfficeParser(filePath, ext);
 }
 
 function getRagStorePath() {
@@ -1214,6 +1304,7 @@ async function indexFilesToRag(filePaths, options = {}) {
       const chunkTexts = splitTextToChunks(fileData.preview, RAG_CHUNK_SIZE, RAG_CHUNK_OVERLAP);
       if (!chunkTexts.length) {
         skipped += 1;
+        errors.push(`${path.basename(filePath)}: текст не извлечён (${fileData.extraction || 'unknown'})`);
         continue;
       }
 
@@ -1973,6 +2064,110 @@ async function listOpenClawAgents() {
     .sort((left, right) => left.agentId.localeCompare(right.agentId));
 }
 
+async function getOpenClawVersionInfo() {
+  const payload = {
+    installedVersion: null,
+    latestVersion: null,
+    updateAvailable: false,
+    inProgress: openClawUpdateInProgress,
+    channel: null,
+  };
+
+  try {
+    const installed = await runOpenClawCommand(['--version'], { timeoutMs: 30000 });
+    const rawInstalled = stripKnownCliNoise(installed.stdout || installed.output || installed.stderr);
+    if (installed.code === 0) {
+      payload.installedVersion = parseOpenClawVersionText(rawInstalled);
+    }
+  } catch (err) {
+    logger.warn(`Unable to resolve installed OpenClaw version: ${err.message}`);
+  }
+
+  try {
+    const statusResult = await runOpenClawCommand(['update', 'status', '--json'], { timeoutMs: 60000 });
+    if (statusResult.code === 0) {
+      const statusPayload = parseJsonFromText(statusResult.stdout || statusResult.output);
+      const availability = statusPayload && statusPayload.availability ? statusPayload.availability : null;
+      const registry = statusPayload && statusPayload.update && statusPayload.update.registry
+        ? statusPayload.update.registry
+        : null;
+
+      payload.latestVersion = parseOpenClawVersionText(
+        (availability && availability.latestVersion) || (registry && registry.latestVersion) || ''
+      );
+      payload.channel = statusPayload && statusPayload.channel ? statusPayload.channel.value || null : null;
+
+      if (availability && typeof availability.available === 'boolean') {
+        payload.updateAvailable = availability.available;
+      }
+    }
+  } catch (err) {
+    logger.warn(`Unable to resolve OpenClaw update status: ${err.message}`);
+  }
+
+  if (!payload.latestVersion && payload.installedVersion) {
+    payload.latestVersion = payload.installedVersion;
+  }
+
+  if (!payload.updateAvailable && payload.installedVersion && payload.latestVersion) {
+    payload.updateAvailable = payload.installedVersion !== payload.latestVersion;
+  }
+
+  return payload;
+}
+
+async function runOpenClawUpdate(options = {}) {
+  if (openClawUpdateInProgress) {
+    throw new Error('Обновление OpenClaw уже выполняется.');
+  }
+
+  const request = options && typeof options === 'object' ? options : {};
+  const dryRun = Boolean(request.dryRun);
+  const restart = request.restart !== false;
+  const timeoutSeconds = Number.isInteger(Number(request.timeoutSeconds)) && Number(request.timeoutSeconds) > 0
+    ? Math.min(1800, Number(request.timeoutSeconds))
+    : 1200;
+  const requestedChannel = ['stable', 'beta', 'dev'].includes(String(request.channel || '').toLowerCase())
+    ? String(request.channel).toLowerCase()
+    : null;
+
+  const args = ['update', '--json', '--yes', '--timeout', String(timeoutSeconds)];
+  if (dryRun) {
+    args.push('--dry-run');
+  }
+  if (!restart) {
+    args.push('--no-restart');
+  }
+  if (requestedChannel) {
+    args.push('--channel', requestedChannel);
+  }
+
+  openClawUpdateInProgress = true;
+  try {
+    const result = await runOpenClawCommand(args, {
+      timeoutMs: Math.max(180000, (timeoutSeconds + 60) * 1000),
+    });
+
+    if (result.code !== 0) {
+      const details = summarizeOpenClawFailure(result.output || `${result.stdout}\n${result.stderr}`);
+      throw new Error(details || 'Не удалось выполнить обновление OpenClaw');
+    }
+
+    const parsed = parseJsonFromText(result.stdout || result.output) || {};
+    return {
+      success: true,
+      dryRun,
+      currentVersion: parseOpenClawVersionText(parsed.currentVersion || ''),
+      targetVersion: parseOpenClawVersionText(parsed.targetVersion || ''),
+      effectiveChannel: parsed.effectiveChannel || requestedChannel || null,
+      restart: !parsed.dryRun && restart,
+      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+    };
+  } finally {
+    openClawUpdateInProgress = false;
+  }
+}
+
 function showNotification(message) {
   new Notification({
     title: 'Братан Desktop',
@@ -2000,6 +2195,8 @@ if (ipcMain && typeof ipcMain.handle === 'function') {
   safeHandle('openclaw-stop', () => stopOpenClawGateway());
   safeHandle('openclaw-status', (event, options) => checkGatewayStatus(options || {}));
   safeHandle('openclaw-configure', (event, config) => updateOpenClawRuntimeConfig(config));
+  safeHandle('openclaw-version-info', async () => getOpenClawVersionInfo());
+  safeHandle('openclaw-update', async (event, options) => runOpenClawUpdate(options || {}));
 
   safeHandle('openclaw-send-message', async (event, payload) => runOpenClawAgentTurn(payload));
 

@@ -93,7 +93,23 @@
             </button>
           </div>
         </div>
-        <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-3">
+          <div class="hidden md:flex items-center space-x-2 text-xs text-gray-600 bg-gray-50 border rounded px-2 py-1">
+            <span class="font-semibold text-gray-700">OpenClaw</span>
+            <span id="openclaw-version-installed">installed: —</span>
+            <span class="text-gray-300">|</span>
+            <span id="openclaw-version-latest">latest: —</span>
+            <span id="openclaw-version-channel" class="text-gray-500"></span>
+          </div>
+          <select id="openclaw-update-channel" class="text-xs border rounded px-2 py-1 bg-white text-gray-700" title="Канал обновлений OpenClaw">
+            <option value="stable">stable</option>
+            <option value="beta">beta</option>
+            <option value="dev">dev</option>
+          </select>
+          <div id="openclaw-update-state" class="hidden lg:block text-xs text-gray-600"></div>
+          <button id="btn-openclaw-update" class="text-sm bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded">
+            <i class="fas fa-download mr-1"></i> Обновить
+          </button>
           <div class="text-sm text-gray-700">
             <i class="fas fa-user mr-1"></i> Дмитрий
           </div>
@@ -296,6 +312,9 @@
               <div class="mb-3">
                 <label class="block text-xs font-medium text-gray-700 mb-1">Коллекция для индексации</label>
                 <input type="text" id="rag-index-collection" value="default" class="w-full border rounded px-3 py-2 text-sm" />
+              </div>
+              <div class="text-xs text-gray-600 mb-3">
+                Поддерживаются TXT/MD/код и документы PDF, DOCX, XLSX, PPTX, RTF, ODT/ODS/ODP.
               </div>
               <div id="rag-selected-files" class="text-sm space-y-1 max-h-28 overflow-auto border rounded p-2 bg-gray-50 mb-3"></div>
               <div class="flex space-x-2 mb-3">
