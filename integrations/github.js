@@ -12,9 +12,10 @@ async function getOctokit() {
 }
 
 class GitHubIntegration {
-  constructor() {
+  constructor(options = {}) {
     this.octokit = null;
-    this.tokenPath = path.join(__dirname, '..', 'tokens', 'github.json');
+    const storageDir = options.storageDir || path.join(__dirname, '..', 'tokens');
+    this.tokenPath = path.join(storageDir, 'github.json');
   }
 
   // Инициализация с токеном

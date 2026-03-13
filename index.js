@@ -2168,7 +2168,9 @@ if (!process.env.JEST_WORKER_ID && app && typeof app.whenReady === 'function') {
     ensureRagStoreLoaded();
 
     googleIntegration = new GoogleIntegration();
-    githubIntegration = new GitHubIntegration();
+    githubIntegration = new GitHubIntegration({
+      storageDir: path.join(appDataPath, 'tokens'),
+    });
 
     // Try to load saved tokens
     await loadIntegrations();
@@ -2196,7 +2198,9 @@ if (!process.env.JEST_WORKER_ID && app && typeof app.whenReady === 'function') {
 async function loadIntegrations() {
   // Try to load GitHub token
   try {
-    const tokenPath = path.join(__dirname, 'tokens', 'github.json');
+    const tokenPath = githubIntegration && githubIntegration.tokenPath
+      ? githubIntegration.tokenPath
+      : path.join(appDataPath, 'tokens', 'github.json');
     if (require('fs').existsSync(tokenPath)) {
       const data = JSON.parse(require('fs').readFileSync(tokenPath, 'utf8'));
       await githubIntegration.initialize(data.token);
