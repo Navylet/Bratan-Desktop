@@ -6,6 +6,8 @@
   },
   "files": [
     "index.js",
+    "logger.js",
+    "taskManager.js",
     "renderer.js",
     "preload.js",
     "index.html",
